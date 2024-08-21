@@ -9,9 +9,16 @@ import pandas as pd
 
 def main():
 # Subset data by index as needed
-    xrange = slice(None, None)
-    yrange = slice(None, None)
-    time_lims = slice(0, 1000)
+    xmin = 1400
+    xmax = 1450
+    ymin = 0
+    ymax = 1200
+    tmin = 0
+    tmax = 9000
+
+    xrange = slice(xmin, xmax)
+    yrange = slice(ymin, ymax)
+    time_lims = slice(tmin, tmax)
 
     # Obtain datasets from h5 file
     filename = 'D:/singlesource_2d_extended/Re100_0_5mm_50Hz_singlesource_2d.h5'
@@ -21,8 +28,8 @@ def main():
         # y_grid = f.get(f'Model Metadata/yGrid')[xrange, yrange].T
 
         # Odor and flow cue data
-        odor_data = f.get(f'Odor Data/c')[time_lims, xrange, yrange].transpose(0, 2, 1)
-        u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange].transpose(0, 2, 1)
+        odor_data = f.get(f'Odor Data/c')[time_lims, xrange, yrange]
+        u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange]
 
         # Spatial resolution & time array
         dt_freq = f.get('Model Metadata/timeResolution')[0].item()
@@ -33,14 +40,17 @@ def main():
     # Flip velocity data upside-down for correct computation of gradients
     u_data = np.flip(u_data, axis=2)
     dudt = np.gradient(u_data, dt, axis=0)
-    flow_data = dudt 
+    flow_data = dudt
+
+    # Normalize flow data array on [0, 1] (min-max normalization)
+    flow_data = (flow_data - np.min(flow_data)) / (np.max(flow_data) - np.min(flow_data))
 
     # Define concentration level for start & end of whiff
-    whiff_threshold = 0.05
+    whiff_threshold = 0.025
 
     # CHOOSING X AND Y BASED ON CONTINUOUS INDICES
-    x = list(range(600, 605, 1))
-    y = list(range(500, 550, 1))
+    x = list(range(0, len(odor_data[0, :, 0]), 1))
+    y = list(range(0, len(odor_data[0, 0, :]), 1))
     x, y = np.meshgrid(x, y)
     locs_list = list(zip(x.flatten(), y.flatten())) 
 
@@ -132,7 +142,7 @@ def main():
         whiff_df = whiff_df[whiff_df['flowcue_start'] >= 0]
 
         # Define ftle end as whiff end + duration of whiff indices
-        whiff_df['flowcue_end'] = whiff_df['end_idx'] + 2 * (whiff_df['length_idx']).astype(int)
+        whiff_df['flowcue_end'] = whiff_df['end_idx'] + (whiff_df['length_idx']).astype(int)
         # Only keep rows from dataframe if ftle_start exists in data range
         whiff_df = whiff_df[whiff_df['flowcue_end'] <= (1000)]
 
@@ -159,12 +169,13 @@ def main():
         stats_list.append(stats_dict)
 
     stats_df = pd.DataFrame(stats_list)
+    stats_df.to_pickle(f'ignore/data/meanEratio_x{xmin*dx}to{xmax*dx}_y{ymin*dx-0.3}to{ymax*dx-0.3}_t{tmin*dt}to{tmax*dt}_wthr{whiff_threshold}.pkl')
 
     # PLOTTING
-    fig, ax = plt.subplots()
-
-    plt.scatter(stats_df['x'], stats_df['y'], stats_df['mean_E_ratio'])
-    plt.savefig('ignore/plots/meanEratiotest.png', dpi=300)
+    plt.close()
+    plt.scatter(stats_df['x'], stats_df['y'], c=stats_df['mean_E_ratio'])
+    plt.colorbar()
+    plt.savefig(f'ignore/plots/meanEratio_x{xmin*dx}to{xmax*dx}_y{ymin*dx-0.3}to{ymax*dx-0.3}_t{tmin*dt}to{tmax*dt}_wthr{whiff_threshold}.png', dpi=300)
     plt.show()
 
 if __name__=='__main__':
