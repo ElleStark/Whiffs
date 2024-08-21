@@ -46,17 +46,18 @@ def main():
     flow_data = (flow_data - np.min(flow_data)) / (np.max(flow_data) - np.min(flow_data))
 
     # Define concentration level for start & end of whiff
-    whiff_threshold = 0.025
+    whiff_threshold = 0.01
 
     # CHOOSING X AND Y BASED ON CONTINUOUS INDICES
-    x = list(range(0, len(odor_data[0, :, 0]), 1))
-    y = list(range(0, len(odor_data[0, 0, :]), 1))
+    spacing = 1
+    x = list(range(0, len(odor_data[0, :, 0]), spacing))
+    y = list(range(0, len(odor_data[0, 0, :]), spacing))
     x, y = np.meshgrid(x, y)
     locs_list = list(zip(x.flatten(), y.flatten())) 
 
-    # Initialize dataframe for storing whiff information
-    all_whiffs_df = pd.DataFrame(columns=['x_idx', 'y_idx', 'start_idx', 'end_idx', 'length_idx', 'duration_sec', 'flowcue_start',
-                                        'flowcue_end', 'E_F_prior', 'E_F_during', 'E_F_after', 'E_F_ratio'])
+    # Initialize dataframe for storing whiff information if needed
+    # all_whiffs_df = pd.DataFrame(columns=['x_idx', 'y_idx', 'start_idx', 'end_idx', 'length_idx', 'duration_sec', 'flowcue_start',
+    #                                     'flowcue_end', 'E_F_prior', 'E_F_during', 'E_F_after', 'E_F_ratio'])
     
     stats_list = []
 
@@ -75,14 +76,6 @@ def main():
         row['E_F_after'] = (flow_ts[whiffend:flowend]).mean()
         row['E_F_ratio'] = np.max([row['E_F_prior'], row['E_F_after']]) / row['E_F_during']
 
-        #print('mean: '+prior)
-        # print(during)
-        # print(after)
-        # print(ratio)
-
-        # val_list = [prior, during, after, ratio]
-
-        # return val_list
         return row
 
     # Loop through each location to compute conditional average ratios
@@ -153,29 +146,22 @@ def main():
             continue
 
         # Compute and store expected value (average) for before, during, and after whiff, along with ratio of (max expected outside)/(expected during)
-        # E_F_prior, E_F_during, E_F_after, E_F_ratio = whiff_df.apply(compute_expected_vals, axis=1)
         whiff_df = whiff_df.apply(compute_expected_vals, axis=1)
-        # whiff_df['E_F_during'] = E_F_during
-        # whiff_df['E_F_after'] = E_F_after
-        # whiff_df['E_F_ratio'] = E_F_ratio
-
-        # Concatenate rows from this point's dataframe to master dataframe with all whiffs and all locations if needed
-        # all_whiffs_df = pd.concat([all_whiffs_df, whiff_df], axis=0)
 
         # Use dictionary to track statistics for this location
         stats_dict = {}
-        # stats_dict.update({'x':x, 'y':y, 'mean_E_ratio': np.mean(whiff_df['E_F_ratio']), 'median_E_F_ratio':np.median(whiff_df['E_F_ratio']), 'sigma_E_F_ratio':np.std(whiff_df['E_F_ratio'])})
-        stats_dict.update({'x':x, 'y':y, 'mean_E_ratio': np.mean(whiff_df['E_F_ratio']), 'median_E_F_ratio':np.median(whiff_df['E_F_ratio'])})
+        stats_dict.update({'x':x, 'y':y, 'mean_E_ratio': np.mean(whiff_df['E_F_ratio']), 'median_E_F_ratio':np.median(whiff_df['E_F_ratio']), 'sigma_E_F_ratio':np.std(whiff_df['E_F_ratio'])})
+        # stats_dict.update({'x':x, 'y':y, 'mean_E_ratio': np.mean(whiff_df['E_F_ratio']), 'median_E_F_ratio':np.median(whiff_df['E_F_ratio'])})
         stats_list.append(stats_dict)
 
     stats_df = pd.DataFrame(stats_list)
-    stats_df.to_pickle(f'ignore/data/meanEratio_x{xmin*dx}to{xmax*dx}_y{ymin*dx-0.3}to{ymax*dx-0.3}_t{tmin*dt}to{tmax*dt}_wthr{whiff_threshold}.pkl')
+    stats_df.to_pickle(f'ignore/data/meanEratio_x{round(xmin*dx, 3)}to{round(xmax*dx, 3)}_y{round(ymin*dx-0.3, 3)}to{round(ymax*dx-0.3, 3)}_t{round(tmin*dt, 0)}to{round(tmax*dt, 0)}_wthr{whiff_threshold}.pkl')
 
     # PLOTTING
     plt.close()
     plt.scatter(stats_df['x'], stats_df['y'], c=stats_df['mean_E_ratio'])
     plt.colorbar()
-    plt.savefig(f'ignore/plots/meanEratio_x{xmin*dx}to{xmax*dx}_y{ymin*dx-0.3}to{ymax*dx-0.3}_t{tmin*dt}to{tmax*dt}_wthr{whiff_threshold}.png', dpi=300)
+    plt.savefig(f'ignore/plots/meanEratio_x{round(xmin*dx, 3)}to{round(xmax*dx, 3)}_y{round(ymin*dx-0.3, 3)}to{round(ymax*dx-0.3, 3)}_t{round(tmin*dt, 0)}to{round(tmax*dt, 0)}_wthr{whiff_threshold}.png', dpi=300)
     plt.show()
 
 if __name__=='__main__':
