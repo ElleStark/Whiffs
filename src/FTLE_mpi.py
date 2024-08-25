@@ -202,10 +202,15 @@ def main():
     comm.Bcast([ymesh_ftle, MPI.DOUBLE], root=0)
 
     # Compute FTLE and save to .npy on each process for each timestep
-
+    ftle_chunk = np.zeros([(end_idx - start_idx-1), grid_dims[0], grid_dims[1]], dtype='d')
+    for t in range(end_idx - start_idx):
+        start_t = (start_idx + t) * dt
+        ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res)
+        ftle_chunk[t, :, :] = ftle_field
 
     # Plot and save figure with FTLE field on each process
-
+    # dynamic file name based on rank/idxs
+    np.save(ftle_chunk)
 
 
 
