@@ -88,6 +88,8 @@ def advect_improvedEuler(filename, t0, y0, dt, xmesh, ymesh):
 def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, ymesh_ftle):
     
     n_steps = abs(int(integration_t / dt))  # number of timesteps in integration time
+    if start_t == 0:
+        DEBUG(f'Timesteps in integration time: {n_steps}.')
     
     # Set up initial conditions
     yIC = np.zeros((2, nx * ny))
@@ -135,11 +137,11 @@ def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, s
             gc_tensor = np.dot(np.transpose(jacobian), jacobian)
     
             # its largest eigenvalue
-            lamda = LA.eig(gc_tensor)
-            max_eig = max(lamda)
+            lamda = LA.eigvals(gc_tensor)
+            max_eig = np.max(lamda)
 
             # Compute FTLE at each location
-            ftle[j][i] = 1 / (abs(integration_t)) * log(sqrt(abs(max_eig)))
+            ftle[j][i] = 1 / (abs(integration_t)) * log(sqrt(max_eig))
 
     return ftle
 
@@ -184,7 +186,7 @@ def main():
     dt = None
     duration = None  # total timesteps (idxs) for FTLE calcs
 
-    # Define xgrid and ygrid on process 0
+    # Define dataset-based variables on process 0
     if rank==0:
         
         spatial_res = load_data_chunk(filename, 'Model Metadata/spatialResolution', ndims=0)
@@ -218,7 +220,7 @@ def main():
     comm.Bcast([xmesh_ftle, MPI.DOUBLE], root=0)
     comm.Bcast([ymesh_ftle, MPI.DOUBLE], root=0)
 
-    # Compute chunk sizes for each process - if 180 processes, chunk size should be 50
+    # Compute chunk sizes for each process - if 180 processes, chunk size should be 49 to 50
     chunk_size = duration // num_procs
     DEBUG(f'Chunk size: {chunk_size}')
     remainder = duration % num_procs
@@ -230,21 +232,20 @@ def main():
 
 
     # Compute FTLE and save to .npy on each process for each timestep
-    ftle_chunk = np.zeros([(end_idx - start_idx-1), grid_dims[0], grid_dims[1]], dtype='d')
+    ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
     for idx in range(end_idx - start_idx):
         start_t = (start_idx + idx) * dt
         ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res)
         ftle_chunk[idx, :, :] = ftle_field
 
-    # Plot and save figure with FTLE field on each process
     # dynamic file name in /rc_scratch based on rank/idxs
     data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.npy'
     np.save(data_fname, ftle_chunk)
     
     # Plot and save figure at final timestep of each process in /rc_scratch
-    fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=end_idx)
+    ftle_fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=end_idx)
     plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.png'
-    plt.savefig(plot_fname, fig, dpi=300)
+    plt.savefig(plot_fname, ftle_fig, dpi=300)
 
     DEBUG(f"Process {rank} completed with result size {ftle_chunk.shape}")
 
