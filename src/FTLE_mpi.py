@@ -28,6 +28,7 @@ DEBUG = logger.debug
 
 
 def load_data_chunk(filename, dataset_name, start_idx=None, end_idx=None, ndims=3):
+    
     with h5py.File(filename, 'r') as f:
         if ndims==3:
             data_chunk = f.get([dataset_name])[start_idx:end_idx, :, :].astype(np.float64)
@@ -35,10 +36,13 @@ def load_data_chunk(filename, dataset_name, start_idx=None, end_idx=None, ndims=
         elif ndims==2:
             data_chunk = f.get([dataset_name])[:].astype(np.float64)
             data_chunk = data_chunk.T 
+        elif ndims==1:
+            data_chunk = f.get([dataset_name])[:].astype(np.float64)
         elif ndims==0:
             data_chunk = f.get([dataset_name])[0].item()
+        else:
+            print('Cannot process number of dimensions. Options are 0, 1, 2, or 3.')
 
-        # DEBUG(f'Memory size of each chunk: {data_chunk.itemsize * data_chunk.size}')
     return data_chunk
 
 
@@ -103,11 +107,11 @@ def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, y
 
 
 def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, spatial_res):
-    # Define variables
+    # Extract grid dimensions
     grid_height = len(ymesh_ftle[:, 0])
     grid_width = len(xmesh_ftle[0, :])
     
-    # Compute flow map (final positions of particles - initil already stored in mesh_ftle arrays)
+    # Compute flow map (final positions of particles - initial positions already stored in mesh_ftle arrays)
     final_pos = compute_flow_map(filename, start_t, integration_t, dt, grid_width, grid_height, xmesh_ftle, ymesh_ftle)
     x_final = final_pos[0]
     x_final = x_final.reshape(grid_height, grid_width)
@@ -140,6 +144,28 @@ def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, s
     return ftle
 
 
+def plot_ftle_snapshot(ftle_field, xmesh, ymesh, odor=False, fname=None, frame=None):
+    fig, ax = plt.subplots()
+
+    ftle_field = np.squeeze(ftle_field[-1:, :, :])
+
+    # Get desired FTLE snapshot data
+    plt.contourf(xmesh, ymesh, ftle_field, 100, cmap=plt.cm.Greys)
+    plt.title('Odor (red) overlaying FTLE (gray lines)')
+    plt.colorbar()
+
+    ax.set_aspect('equal', adjustable='box')
+    
+    # overlay odor data if desired
+    if odor:
+        odor_data = load_data_chunk(fname, 'Odor Data/c', frame, frame+1, ndims=3)
+        plt.pcolormesh(xmesh, ymesh, odor_data, cmap=plt.cm.Reds, alpha=0.5, vmax=0.5)
+        plt.colorbar()
+        ax.set_aspect('equal', adjustable='box')
+
+    return fig
+
+
 def main():
 
     # MPI setup and related data
@@ -149,34 +175,25 @@ def main():
     num_procs = comm.Get_size()
     INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
-    # Define time, x, and y sizes - hardcoded here for convenience
-    t, x, y = 9001, 1501, 1201
-
-    # Compute chunk sizes for each process - if 180 processes, chunk size should be 50
-    chunk_size = t // num_procs
-    DEBUG(f'Chunk size: {chunk_size}')
-    remainder = t % num_procs
-
-    # Find start and end time index for each process
-    start_idx = rank * chunk_size + min(rank, remainder) 
-    end_idx = start_idx + chunk_size + (1 if rank < remainder else 0) 
-    DEBUG(f'start idx: {start_idx}; end idx: {end_idx}')
-
     # Define common variables on all processes
     filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
+
+    # These variables will be broadcast from process 0 based on file contents
     grid_dims = None
     dt = None
+    duration = None  # total timesteps (idxs) for FTLE calcs
 
     # Define xgrid and ygrid on process 0
     if rank==0:
-        # filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
         
         spatial_res = load_data_chunk(filename, 'Model Metadata/spatialResolution', ndims=0)
         dt_freq = load_data_chunk(filename, 'Model Metadata/timeResolution', ndims=0)
         dt = 1 / dt_freq  # convert from Hz to seconds
         ymesh_uv = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))
         xmesh_uv = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)
+        duration = len(load_data_chunk(filename, 'Model Metadata/timeArray', ndims=1))
+        duration = duration - integration_time / dt  # adjust duration to account for advection time at last FTLE step
 
         # Create grid of particles with desired spacing
         particle_spacing = spatial_res / 2  # can determine visually if dx is appropriate based on smooth contours for FTLE
@@ -188,11 +205,11 @@ def main():
         ymesh_ftle = np.flipud(ymesh_ftle)
         grid_dims = xmesh_ftle.shape
 
-    # Broadcast dimensions of x and y grids to each process for pre-allocating arrays
-    # comm.bcast(filename, root=0)  # note, use bcast for Python objects, Bcast for Numpy arrays
-    comm.bcast(grid_dims, root=0) 
+    # Broadcast dimensions of x and y grids to each process for pre-allocating arrays  
+    comm.bcast(grid_dims, root=0) # note, use bcast for Python objects, Bcast for Numpy arrays
     comm.bcast(dt, root=0)
-    comm.bcast(particle_spacing, root=0)  
+    comm.bcast(particle_spacing, root=0) 
+    comm.bcast(duration, root=0) 
     
     if rank != 0:
         xmesh_ftle = np.empty(grid_dims, dtype='d')
@@ -201,92 +218,35 @@ def main():
     comm.Bcast([xmesh_ftle, MPI.DOUBLE], root=0)
     comm.Bcast([ymesh_ftle, MPI.DOUBLE], root=0)
 
+    # Compute chunk sizes for each process - if 180 processes, chunk size should be 50
+    chunk_size = duration // num_procs
+    DEBUG(f'Chunk size: {chunk_size}')
+    remainder = duration % num_procs
+
+    # Find start and end time index for each process
+    start_idx = rank * chunk_size + min(rank, remainder) 
+    end_idx = start_idx + chunk_size + (1 if rank < remainder else 0) 
+    DEBUG(f'start idx: {start_idx}; end idx: {end_idx}')
+
+
     # Compute FTLE and save to .npy on each process for each timestep
     ftle_chunk = np.zeros([(end_idx - start_idx-1), grid_dims[0], grid_dims[1]], dtype='d')
-    for t in range(end_idx - start_idx):
-        start_t = (start_idx + t) * dt
+    for idx in range(end_idx - start_idx):
+        start_t = (start_idx + idx) * dt
         ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res)
-        ftle_chunk[t, :, :] = ftle_field
+        ftle_chunk[idx, :, :] = ftle_field
 
     # Plot and save figure with FTLE field on each process
-    # dynamic file name based on rank/idxs
-    np.save(ftle_chunk)
-
-
-
-    # Load chunk of data to each process: enough to compute FTLE field for n timesteps, then save to numpy in scratch folder
-    # local_u_chunk = load_data_chunk(filename, dataset_name, start_idx, end_idx, adjust)
-    # DEBUG(f'Process {rank} loaded data chunk with shape {local_u_chunk.shape}')
-
-    # Simple QC test for mpi: sum along time axis in each process
-    # local_result = np.sum(local_u_chunk, axis=0)
-
-    # LOCAL RESULTS: CALCULATE FINITE TIME LYAPUNOV EXPONENT 
-    # Each process computes FTLE field for 50 timesteps and saves to .npy file in /scratch directory
+    # dynamic file name in /rc_scratch based on rank/idxs
+    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.npy'
+    np.save(data_fname, ftle_chunk)
     
+    # Plot and save figure at final timestep of each process in /rc_scratch
+    fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=end_idx)
+    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.png'
+    plt.savefig(plot_fname, fig, dpi=300)
 
-    # Save local_ftle to numpy in scratch directory
-
-    DEBUG(f"Process {rank} completed with result size {local_ftle.size}")
-
-
-    # # GATHER ALL RESULTS INTO PROCESS 0
-
-    # if streamwise:
-    #     recvcounts = np.array([chunk_size * x] * num_procs, dtype=int)
-    #     for i in range(remainder):
-    #         recvcounts[i] += x
-    # else:
-    #     recvcounts = np.array([chunk_size * y] * num_procs, dtype=int)
-    #     for i in range(remainder):
-    #         recvcounts[i] += y
-
-    # recvdisplacements = np.array([sum(recvcounts[:i]) for i in range(num_procs)], dtype=int)
-
-    # # Prepare buffer in root process for gathering
-    # if rank == 0:
-    #     if streamwise:
-    #         gathered_u = np.empty((y, x), dtype=np.float64)
-    #         # data_test = np.empty((y, x), dtype=np.float64)
-    #     else:
-    #         gathered_u = np.empty((x, y), dtype=np.float64)
-    # else:
-    #     gathered_u = None
-    #     # data_test = None
-
-    # comm_world.Gatherv(local_result, [gathered_u, recvcounts, recvdisplacements, MPI.DOUBLE], root=0)
-    # # comm_world.Gatherv(local_u_mean, [data_test, recvcounts, recvdisplacements, MPI.DOUBLE], root=0)
-
-    # # Reshape gathered data
-    # if rank == 0: 
-    #     if streamwise:
-    #         gathered_u = gathered_u.reshape((y, x))
-    #     else:
-    #         gathered_u = gathered_u.reshape((x, y)).T
-    #     DEBUG(f'gathered data shape: {gathered_u.shape}')
-    #     DEBUG(f'y = {y}')
-    #     # data_test = data_test.reshape((y, x))
-
-    #     gathered_u = np.flip(gathered_u, axis=0)
-    #     INFO("ils array data shape: " + str(gathered_u.shape[0]) + " x " + str(gathered_u.shape[1]))
-    #     DEBUG("spatial average across domain: " + str(np.mean(gathered_u)))
-
-    #     if streamwise:
-    #         direction = 'streamwise'
-    #     else:
-    #         direction = 'cross_stream'
-    #     np.save(f'/rc_scratch/elst4602/FisherPlumePlots/ILS_{dataset_name}_{direction}.npy', gathered_u)
-
-    #     # QC Plots
-    #     fig, ax = plt.subplots(figsize=(5.9, 4))
-    #     plt.pcolormesh(gathered_u, cmap='magma_r', vmin=0, vmax=0.20)
-    #     plt.colorbar()
-    #     plt.savefig(f'/rc_scratch/elst4602/FisherPlumePlots/ILS_{dataset_name}_{direction}.png', dpi=600)
-
-        # plt.close()
-        # plt.pcolormesh(data_test)
-        # plt.colorbar()
-        # plt.savefig('/rc_scratch/elst4602/FisherPlumePlots/uprime0.png', dpi=600)
+    DEBUG(f"Process {rank} completed with result size {ftle_chunk.shape}")
 
 if __name__=="__main__":
     main()
