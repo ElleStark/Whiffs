@@ -31,15 +31,15 @@ def load_data_chunk(filename, dataset_name, start_idx=None, end_idx=None, ndims=
     
     with h5py.File(filename, 'r') as f:
         if ndims==3:
-            data_chunk = f.get([dataset_name])[start_idx:end_idx, :, :].astype(np.float64)
+            data_chunk = f.get(dataset_name)[start_idx:end_idx, :, :].astype(np.float64)
             data_chunk = data_chunk.transpose(2, 1, 0)
         elif ndims==2:
-            data_chunk = f.get([dataset_name])[:].astype(np.float64)
+            data_chunk = f.get(dataset_name)[:].astype(np.float64)
             data_chunk = data_chunk.T 
         elif ndims==1:
-            data_chunk = f.get([dataset_name])[:].astype(np.float64)
+            data_chunk = f.get(dataset_name)[:].astype(np.float64)
         elif ndims==0:
-            data_chunk = f.get([dataset_name])[0].item()
+            data_chunk = f.get(dataset_name)[0].item()
         else:
             print('Cannot process number of dimensions. Options are 0, 1, 2, or 3.')
 
@@ -175,7 +175,7 @@ def main():
     rank = comm.Get_rank()
     # number of processes will be determined from ntasks listed on Slurm job script (.sh file) 
     num_procs = comm.Get_size()
-    INFO(f'RUNNING ON {num_procs} PROCESSES.')
+    # INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
     # Define common variables on all processes
     filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
