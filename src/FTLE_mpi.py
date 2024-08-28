@@ -185,6 +185,7 @@ def main():
     grid_dims = None
     dt = None
     duration = None  # total timesteps (idxs) for FTLE calcs
+    particle_spacing = None
 
     # Define dataset-based variables on process 0
     if rank==0:
