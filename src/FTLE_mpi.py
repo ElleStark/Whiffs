@@ -181,11 +181,7 @@ def main():
     filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
-    # These variables will be broadcast from process 0 based on file contents
-    grid_dims = None
-    dt = None
-    duration = None  # total timesteps (idxs) for FTLE calcs
-    particle_spacing = None
+
 
     # Define dataset-based variables on process 0
     if rank==0:
@@ -195,8 +191,8 @@ def main():
         dt = 1 / dt_freq  # convert from Hz to seconds
         ymesh_uv = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))
         xmesh_uv = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)
-        duration = len(load_data_chunk(filename, 'Model Metadata/timeArray', ndims=1))
-        duration = duration - integration_time / dt  # adjust duration to account for advection time at last FTLE step
+        duration = load_data_chunk(filename, 'Model Metadata/datasetDuration', ndims=0)
+        duration = (duration - integration_time) / dt  # adjust duration to account for advection time at last FTLE step
 
         # Create grid of particles with desired spacing
         particle_spacing = spatial_res / 2  # can determine visually if dx is appropriate based on smooth contours for FTLE
@@ -208,11 +204,18 @@ def main():
         ymesh_ftle = np.flipud(ymesh_ftle)
         grid_dims = xmesh_ftle.shape
 
+    else:
+        # These variables will be broadcast from process 0 based on file contents
+        grid_dims = None
+        dt = None
+        duration = None  # total timesteps (idxs) for FTLE calcs
+        particle_spacing = None
+
     # Broadcast dimensions of x and y grids to each process for pre-allocating arrays  
-    comm.bcast(grid_dims, root=0) # note, use bcast for Python objects, Bcast for Numpy arrays
-    comm.bcast(dt, root=0)
-    comm.bcast(particle_spacing, root=0) 
-    comm.bcast(duration, root=0) 
+    grid_dims = comm.bcast(grid_dims, root=0) # note, use bcast for Python objects, Bcast for Numpy arrays
+    dt = comm.bcast(dt, root=0)
+    particle_spacing = comm.bcast(particle_spacing, root=0) 
+    duration = comm.bcast(duration, root=0) 
     
     if rank != 0:
         xmesh_ftle = np.empty(grid_dims, dtype='d')
