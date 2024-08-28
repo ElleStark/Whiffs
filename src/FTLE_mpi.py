@@ -178,14 +178,14 @@ def main():
     # INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
     # Define common variables on all processes
-    filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    filename = '/rc_scratch/elst4602/LCS_project/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
 
 
     # Define dataset-based variables on process 0
     if rank==0:
-        
+        start = time.time()
         spatial_res = load_data_chunk(filename, 'Model Metadata/spatialResolution', ndims=0)
         dt_freq = load_data_chunk(filename, 'Model Metadata/timeResolution', ndims=0)
         dt = 1 / dt_freq  # convert from Hz to seconds
@@ -202,7 +202,9 @@ def main():
         yvec_ftle = np.linspace(ymesh_uv[0][0], ymesh_uv[-1][0], int(np.shape(xmesh_uv)[0] * spatial_res/particle_spacing))
         xmesh_ftle, ymesh_ftle = np.meshgrid(xvec_ftle, yvec_ftle, indexing='xy')
         ymesh_ftle = np.flipud(ymesh_ftle)
-        grid_dims = xmesh_ftle.shape
+        grid_dims = np.shape(xmesh_ftle)
+        DEBUG(f'Grid dimensions: {grid_dims}.')
+        DEBUG(f"Time to load metadata on process 0: {time.time() - start} s.")
 
     else:
         # These variables will be broadcast from process 0 based on file contents
@@ -237,9 +239,14 @@ def main():
 
     # Compute FTLE and save to .npy on each process for each timestep
     ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
-    for idx in range(end_idx - start_idx):
+    # timesteps = range(end_idx - start_idx)
+    timesteps = [0]  # TEST WITH SINGLE TIMESTEP
+    for idx in timesteps:
         start_t = (start_idx + idx) * dt
+        start = time.time()
+        DEBUG(f'Began FTLE computation on process {rank} at {start}.')
         ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res)
+        DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
         ftle_chunk[idx, :, :] = ftle_field
 
     # dynamic file name in /rc_scratch based on rank/idxs
