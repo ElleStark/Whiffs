@@ -181,8 +181,6 @@ def main():
     filename = '/rc_scratch/elst4602/LCS_project/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
-
-
     # Define dataset-based variables on process 0
     if rank==0:
         start = time.time()
@@ -201,7 +199,9 @@ def main():
         xvec_ftle = np.linspace(xmesh_uv[0][0], xmesh_uv[0][-1], int(np.shape(xmesh_uv)[1] * spatial_res/particle_spacing))
         yvec_ftle = np.linspace(ymesh_uv[0][0], ymesh_uv[-1][0], int(np.shape(xmesh_uv)[0] * spatial_res/particle_spacing))
         xmesh_ftle, ymesh_ftle = np.meshgrid(xvec_ftle, yvec_ftle, indexing='xy')
+        xmesh_ftle = np.ascontiguousarray(xmesh_ftle)
         ymesh_ftle = np.flipud(ymesh_ftle)
+        ymesh_ftle = np.ascontiguousarray(ymesh_ftle)
         grid_dims = np.shape(xmesh_ftle)
         DEBUG(f'Grid dimensions: {grid_dims}.')
         DEBUG(f"Time to load metadata on process 0: {time.time() - start} s.")
@@ -215,13 +215,15 @@ def main():
 
     # Broadcast dimensions of x and y grids to each process for pre-allocating arrays  
     grid_dims = comm.bcast(grid_dims, root=0) # note, use bcast for Python objects, Bcast for Numpy arrays
+    DEBUG(f'process {rank} grid dims: {grid_dims}.')
     dt = comm.bcast(dt, root=0)
     particle_spacing = comm.bcast(particle_spacing, root=0) 
     duration = comm.bcast(duration, root=0) 
     
     if rank != 0:
-        xmesh_ftle = np.empty(grid_dims, dtype='d')
-        ymesh_ftle = np.empty(grid_dims, dtype='d')
+        xmesh_ftle = np.zeros(grid_dims, dtype='d')
+        ymesh_ftle = np.zeros(grid_dims, dtype='d')
+        DEBUG(f'process {rank} mesh buffers set.')
 
     comm.Bcast([xmesh_ftle, MPI.DOUBLE], root=0)
     comm.Bcast([ymesh_ftle, MPI.DOUBLE], root=0)
@@ -232,8 +234,8 @@ def main():
     remainder = duration % num_procs
 
     # Find start and end time index for each process
-    start_idx = rank * chunk_size + min(rank, remainder) 
-    end_idx = start_idx + chunk_size + (1 if rank < remainder else 0) 
+    start_idx = int(rank * chunk_size + min(rank, remainder)) 
+    end_idx = int(start_idx + chunk_size + (1 if rank < remainder else 0)) 
     DEBUG(f'start idx: {start_idx}; end idx: {end_idx}')
 
 
