@@ -85,7 +85,7 @@ def advect_improvedEuler(filename, t0, y0, dt, xmesh, ymesh):
     return y_out 
 
 
-def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, ymesh_ftle):
+def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv):
     
     n_steps = abs(int(integration_t / dt))  # number of timesteps in integration time
     if start_t == 0:
@@ -100,7 +100,7 @@ def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, y
 
     for step in range(n_steps):
         tstep = step * dt + start_t
-        y_out = advect_improvedEuler(filename, tstep, y_in, dt, xmesh_ftle, ymesh_ftle)
+        y_out = advect_improvedEuler(filename, tstep, y_in, dt, xmesh_uv, ymesh_uv)
         y_in = y_out
 
     y_out = np.squeeze(y_out)
@@ -108,13 +108,13 @@ def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, y
     return y_out
 
 
-def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, spatial_res):
+def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, spatial_res, xmesh_uv, ymesh_uv):
     # Extract grid dimensions
     grid_height = len(ymesh_ftle[:, 0])
     grid_width = len(xmesh_ftle[0, :])
     
     # Compute flow map (final positions of particles - initial positions already stored in mesh_ftle arrays)
-    final_pos = compute_flow_map(filename, start_t, integration_t, dt, grid_width, grid_height, xmesh_ftle, ymesh_ftle)
+    final_pos = compute_flow_map(filename, start_t, integration_t, dt, grid_width, grid_height, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv)
     x_final = final_pos[0]
     x_final = x_final.reshape(grid_height, grid_width)
     y_final = final_pos[1]
@@ -189,6 +189,9 @@ def main():
         dt = 1 / dt_freq  # convert from Hz to seconds
         ymesh_uv = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))
         xmesh_uv = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)
+        ymesh_uv = np.ascontiguousarray(ymesh_uv)
+        xmesh_uv = np.ascontiguousarray(xmesh_uv)
+        u_grid_dims = np.shape(xmesh_uv)
         duration = load_data_chunk(filename, 'Model Metadata/datasetDuration', ndims=0)
         duration = (duration - integration_time) / dt  # adjust duration to account for advection time at last FTLE step
 
@@ -209,24 +212,32 @@ def main():
     else:
         # These variables will be broadcast from process 0 based on file contents
         grid_dims = None
+        u_grid_dims = None
         dt = None
         duration = None  # total timesteps (idxs) for FTLE calcs
         particle_spacing = None
+        spatial_res = None
 
     # Broadcast dimensions of x and y grids to each process for pre-allocating arrays  
     grid_dims = comm.bcast(grid_dims, root=0) # note, use bcast for Python objects, Bcast for Numpy arrays
-    DEBUG(f'process {rank} grid dims: {grid_dims}.')
+    # DEBUG(f'process {rank} grid dims: {grid_dims}.')
+    u_grid_dims = comm.bcast(u_grid_dims, root=0)
     dt = comm.bcast(dt, root=0)
     particle_spacing = comm.bcast(particle_spacing, root=0) 
     duration = comm.bcast(duration, root=0) 
+    spatial_res = comm.bcast(spatial_res, root=0)
     
     if rank != 0:
         xmesh_ftle = np.zeros(grid_dims, dtype='d')
         ymesh_ftle = np.zeros(grid_dims, dtype='d')
-        DEBUG(f'process {rank} mesh buffers set.')
+        xmesh_uv = np.zeros(u_grid_dims, dtype='d')
+        ymesh_uv = np.zeros(u_grid_dims, dtype='d')
+        # DEBUG(f'process {rank} mesh buffers set.')
 
     comm.Bcast([xmesh_ftle, MPI.DOUBLE], root=0)
     comm.Bcast([ymesh_ftle, MPI.DOUBLE], root=0)
+    comm.Bcast([xmesh_uv, MPI.DOUBLE], root=0)
+    comm.Bcast([ymesh_uv, MPI.DOUBLE], root=0)
 
     # Compute chunk sizes for each process - if 180 processes, chunk size should be 49 to 50
     chunk_size = duration // num_procs
@@ -247,7 +258,7 @@ def main():
         start_t = (start_idx + idx) * dt
         start = time.time()
         DEBUG(f'Began FTLE computation on process {rank} at {start}.')
-        ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res)
+        ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res, xmesh_uv, ymesh_uv)
         DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
         ftle_chunk[idx, :, :] = ftle_field
 
