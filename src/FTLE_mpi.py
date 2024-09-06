@@ -53,16 +53,21 @@ def get_vfield(filename, t0, y, dt, xmesh, ymesh):
 
     # Convert from time to frame
     frame = int(t0 / dt)
-    u_data = load_data_chunk(filename, u_dataset_name, frame, frame+1)
-    v_data = load_data_chunk(filename, v_dataset_name, frame, frame+1)
+    # u_data = load_data_chunk(filename, u_dataset_name, frame, frame+1)
+    # v_data = load_data_chunk(filename, v_dataset_name, frame, frame+1)
+    with h5py.File(filename, 'r') as f:
+        u_data = f.get(u_dataset_name)[frame, :, :].astype(np.float64)
+        u_data = u_data.T
+        v_data = f.get(v_dataset_name)[frame, :, :].astype(np.float64)
+        v_data = v_data.T
 
-    ymesh_vec = ymesh[:, 0]
+    ymesh_vec = np.flipud(ymesh)[:, 0]
     xmesh_vec = xmesh[0, :]
     # ymesh_vec = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))[:, 0]
     # xmesh_vec = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)[0, :]
 
     # Set up interpolation functions
-    # can use cubic interpolation for continuity of the between the segments (improve smoothness)
+    # can use cubic interpolation for continuity between the segments (improve smoothness)
     # set bounds_error=False to allow particles to go outside the domain by extrapolation
     u_interp = RegularGridInterpolator((ymesh_vec, xmesh_vec), np.squeeze(np.flipud(u_data)),
                                         method='linear', bounds_error=False, fill_value=None)
@@ -73,21 +78,66 @@ def get_vfield(filename, t0, y, dt, xmesh, ymesh):
     v = v_interp((y[1], y[0]))
     vfield = np.array([u, v])
 
+    plot_times = [0, 10, 20, 30, 40, 50, 60]
+
+    if t0 in plot_times:
+        # Plot u: horizontal component of velocity
+        plt.pcolormesh(u.reshape(2402, 3002))
+        plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/u_interp_t{t0}.png')
+
+        # Plot v: vertical component of velocity
+        plt.pcolormesh(v.reshape(2402, 3002))
+        plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/v_interp_t{t0}.png')
+
+
     return vfield
 
 
-def advect_improvedEuler(filename, t0, y0, dt, xmesh, ymesh):
+def advect_improvedEuler(filename, t0, y0, dt, ftle_dt, xmesh, ymesh):
     # get the slopes at the initial and end points
     f1 = get_vfield(filename, t0, y0, dt, xmesh, ymesh)
-    f2 = get_vfield(filename, t0 + dt, y0 + dt * f1, dt, xmesh, ymesh)
-    y_out = y0 + dt / 2 * (f1 + f2)
+    f2 = get_vfield(filename, t0 + ftle_dt, y0 + ftle_dt * f1, dt, xmesh, ymesh)
+    y_out = y0 + ftle_dt / 2 * (f1 + f2)
 
     return y_out 
 
 
-def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv):
+def find_max_eigval(A):
+    """The function computes the eigenvalues and eigenvectors of a two-dimensional symmetric matrix.
+    from TBarrier repository by Encinas Bartos, Kaszas, Haller 2023: https://github.com/EncinasBartos/TBarrier
+    Parameters:
+        A: array(2,2), input matrix
+
+
+    Returns:
+        lambda_min: float, minimal eigenvalue
+        lambda_max: float, maximal eigenvalue
+        v_min: array(2,), minimal eigenvector
+        v_max: array(2,), maximal eigenvector
+    """
+    A11 = A[0, 0]  # float
+    A12 = A[0, 1]  # float
+    A22 = A[1, 1]  # float
+
+    discriminant = (A11 + A22) ** 2 / 4 - (A11 * A22 - A12 ** 2)  # float
+
+    if discriminant < 0 or np.isnan(discriminant):
+        return np.nan, np.nan, np.zeros((1, 2)) * np.nan, np.zeros((1, 2)) * np.nan
+
+    lambda_max = (A11 + A22) / 2 + np.sqrt(discriminant)  # float
+    # lambda_min = (A11 + A22) / 2 - np.sqrt(discriminant)  # float
+
+    # v_max = np.array([-A12, A11 - lambda_max])  # array (2,)
+    # v_max = v_max / np.sqrt(v_max[0] ** 2 + v_max[1] ** 2)  # array (2,)
+
+    # v_min = np.array([-v_max[1], v_max[0]])  # array (2,)
+
+    return lambda_max
+
+
+def compute_flow_map(filename, start_t, integration_t, dt, ftle_dt, nx, ny, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv):
     
-    n_steps = abs(int(integration_t / dt))  # number of timesteps in integration time
+    n_steps = abs(int(integration_t / ftle_dt))  # number of timesteps in integration time
     if start_t == 0:
         DEBUG(f'Timesteps in integration time: {n_steps}.')
     
@@ -99,8 +149,8 @@ def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, y
     y_in = yIC
 
     for step in range(n_steps):
-        tstep = step * dt + start_t
-        y_out = advect_improvedEuler(filename, tstep, y_in, dt, xmesh_uv, ymesh_uv)
+        tstep = step * ftle_dt + start_t
+        y_out = advect_improvedEuler(filename, tstep, y_in, dt, ftle_dt, xmesh_uv, ymesh_uv)
         y_in = y_out
 
     y_out = np.squeeze(y_out)
@@ -108,13 +158,13 @@ def compute_flow_map(filename, start_t, integration_t, dt, nx, ny, xmesh_ftle, y
     return y_out
 
 
-def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, spatial_res, xmesh_uv, ymesh_uv):
+def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, ftle_dt, spatial_res, xmesh_uv, ymesh_uv):
     # Extract grid dimensions
     grid_height = len(ymesh_ftle[:, 0])
     grid_width = len(xmesh_ftle[0, :])
     
     # Compute flow map (final positions of particles - initial positions already stored in mesh_ftle arrays)
-    final_pos = compute_flow_map(filename, start_t, integration_t, dt, grid_width, grid_height, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv)
+    final_pos = compute_flow_map(filename, start_t, integration_t, dt, ftle_dt, grid_width, grid_height, xmesh_ftle, ymesh_ftle, xmesh_uv, ymesh_uv)
     x_final = final_pos[0]
     x_final = x_final.reshape(grid_height, grid_width)
     y_final = final_pos[1]
@@ -136,23 +186,26 @@ def compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_t, dt, s
             # Cauchy-Green tensor
             gc_tensor = np.dot(np.transpose(jacobian), jacobian)
     
+            # compute eigenvalues and eigenvectors of CG tensor
+            # max_eig = find_max_eigval(gc_tensor)  # minval, maxval, vecs
+
             # its largest eigenvalue
             lamda = LA.eigvals(gc_tensor)
             max_eig = np.max(lamda)
 
             # Compute FTLE at each location
-            ftle[j][i] = 1 / (abs(integration_t)) * log(sqrt(max_eig))
+            ftle[j][i] = 1 / (abs(integration_t)) * log(sqrt(abs(max_eig)))
 
     return ftle
 
 
-def plot_ftle_snapshot(ftle_field, xmesh, ymesh, odor=False, fname=None, frame=None):
+def plot_ftle_snapshot(ftle_field, xmesh, ymesh, odor=False, fname=None, frame=None, odor_xmesh=None, odor_ymesh=None):
     fig, ax = plt.subplots()
 
-    ftle_field = np.squeeze(ftle_field[-1:, :, :])
+    ftle_field = np.squeeze(ftle_field[0, :, :])
 
     # Get desired FTLE snapshot data
-    plt.contourf(xmesh, ymesh, ftle_field, 100, cmap=plt.cm.Greys)
+    plt.contourf(xmesh, ymesh, ftle_field, 100, cmap=plt.cm.Greys, vmin=0, vmax=8)
     plt.title('Odor (red) overlaying FTLE (gray lines)')
     plt.colorbar()
 
@@ -161,7 +214,8 @@ def plot_ftle_snapshot(ftle_field, xmesh, ymesh, odor=False, fname=None, frame=N
     # overlay odor data if desired
     if odor:
         odor_data = load_data_chunk(fname, 'Odor Data/c', frame, frame+1, ndims=3)
-        plt.pcolormesh(xmesh, ymesh, odor_data, cmap=plt.cm.Reds, alpha=0.5, vmax=0.5)
+        odor_data = np.squeeze(odor_data)
+        plt.pcolormesh(odor_xmesh, odor_ymesh, odor_data, cmap=plt.cm.Reds, alpha=0.5, vmax=0.5)
         plt.colorbar()
         ax.set_aspect('equal', adjustable='box')
 
@@ -178,7 +232,8 @@ def main():
     # INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
     # Define common variables on all processes
-    filename = '/rc_scratch/elst4602/LCS_project/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    # filename = '/rc_scratch/elst4602/LCS_project/Data_xfer/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
     # Define dataset-based variables on process 0
@@ -186,26 +241,35 @@ def main():
         start = time.time()
         spatial_res = load_data_chunk(filename, 'Model Metadata/spatialResolution', ndims=0)
         dt_freq = load_data_chunk(filename, 'Model Metadata/timeResolution', ndims=0)
-        dt = 1 / dt_freq  # convert from Hz to seconds
-        ymesh_uv = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))
+        dt = 1 / dt_freq  # convert from Hz to seconds; negative for backward-time FTLE
+        # ymesh_uv = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))
+        ymesh_uv = load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2)
         xmesh_uv = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)
-        ymesh_uv = np.ascontiguousarray(ymesh_uv)
-        xmesh_uv = np.ascontiguousarray(xmesh_uv)
         u_grid_dims = np.shape(xmesh_uv)
+        x_min = xmesh_uv[0][0]
+        x_max = xmesh_uv[0][-1]
+        y_min = ymesh_uv[0][0]
+        y_max = ymesh_uv[-1][0]
+        # ymesh_uv = np.ascontiguousarray(ymesh_uv)
+        # xmesh_uv = np.ascontiguousarray(xmesh_uv)
+        ymesh_uv = ymesh_uv.flatten()
+        xmesh_uv = xmesh_uv.flatten()
         duration = load_data_chunk(filename, 'Model Metadata/datasetDuration', ndims=0)
-        duration = (duration - integration_time) / dt  # adjust duration to account for advection time at last FTLE step
+        duration = (duration - integration_time) / dt  # adjust duration to account for advection time at first FTLE step
 
         # Create grid of particles with desired spacing
         particle_spacing = spatial_res / 2  # can determine visually if dx is appropriate based on smooth contours for FTLE
 
         # x and y vectors based on velocity mesh limits and particle spacing
-        xvec_ftle = np.linspace(xmesh_uv[0][0], xmesh_uv[0][-1], int(np.shape(xmesh_uv)[1] * spatial_res/particle_spacing))
-        yvec_ftle = np.linspace(ymesh_uv[0][0], ymesh_uv[-1][0], int(np.shape(xmesh_uv)[0] * spatial_res/particle_spacing))
-        xmesh_ftle, ymesh_ftle = np.meshgrid(xvec_ftle, yvec_ftle, indexing='xy')
-        xmesh_ftle = np.ascontiguousarray(xmesh_ftle)
+        xmesh_ftle = np.linspace(x_min, x_max, int(u_grid_dims[1] * spatial_res/particle_spacing))
+        ymesh_ftle = np.linspace(y_min, y_max, int(u_grid_dims[0] * spatial_res/particle_spacing))
+        xmesh_ftle, ymesh_ftle = np.meshgrid(xmesh_ftle, ymesh_ftle, indexing='xy')
+        # xmesh_ftle = np.ascontiguousarray(xmesh_ftle)
         ymesh_ftle = np.flipud(ymesh_ftle)
-        ymesh_ftle = np.ascontiguousarray(ymesh_ftle)
+        # ymesh_ftle = np.ascontiguousarray(ymesh_ftle)
         grid_dims = np.shape(xmesh_ftle)
+        ymesh_ftle = ymesh_ftle.flatten()
+        xmesh_ftle = xmesh_ftle.flatten()
         DEBUG(f'Grid dimensions: {grid_dims}.')
         DEBUG(f"Time to load metadata on process 0: {time.time() - start} s.")
 
@@ -223,15 +287,20 @@ def main():
     # DEBUG(f'process {rank} grid dims: {grid_dims}.')
     u_grid_dims = comm.bcast(u_grid_dims, root=0)
     dt = comm.bcast(dt, root=0)
+    ftle_dt = -dt
     particle_spacing = comm.bcast(particle_spacing, root=0) 
     duration = comm.bcast(duration, root=0) 
     spatial_res = comm.bcast(spatial_res, root=0)
     
     if rank != 0:
-        xmesh_ftle = np.zeros(grid_dims, dtype='d')
-        ymesh_ftle = np.zeros(grid_dims, dtype='d')
-        xmesh_uv = np.zeros(u_grid_dims, dtype='d')
-        ymesh_uv = np.zeros(u_grid_dims, dtype='d')
+        xmesh_ftle = np.empty([grid_dims[0]*grid_dims[1]], dtype='d')
+        ymesh_ftle = np.empty([grid_dims[0]*grid_dims[1]], dtype='d')
+        xmesh_uv = np.empty([u_grid_dims[0]*u_grid_dims[1]], dtype='d')
+        ymesh_uv = np.empty([u_grid_dims[0]*u_grid_dims[1]], dtype='d')
+        # xmesh_ftle = np.zeros(grid_dims, dtype='d')
+        # ymesh_ftle = np.zeros(grid_dims, dtype='d')
+        # xmesh_uv = np.zeros(u_grid_dims, dtype='d')
+        # ymesh_uv = np.zeros(u_grid_dims, dtype='d')
         # DEBUG(f'process {rank} mesh buffers set.')
 
     comm.Bcast([xmesh_ftle, MPI.DOUBLE], root=0)
@@ -239,37 +308,53 @@ def main():
     comm.Bcast([xmesh_uv, MPI.DOUBLE], root=0)
     comm.Bcast([ymesh_uv, MPI.DOUBLE], root=0)
 
+    # Reshape x and y meshes
+    xmesh_ftle = xmesh_ftle.reshape(grid_dims)
+    ymesh_ftle = ymesh_ftle.reshape(grid_dims)
+    xmesh_uv = xmesh_uv.reshape(u_grid_dims)
+    ymesh_uv = ymesh_uv.reshape(u_grid_dims)
+
     # Compute chunk sizes for each process - if 180 processes, chunk size should be 49 to 50
     chunk_size = duration // num_procs
-    DEBUG(f'Chunk size: {chunk_size}')
+    # DEBUG(f'Chunk size: {chunk_size}')
     remainder = duration % num_procs
 
     # Find start and end time index for each process
-    start_idx = int(rank * chunk_size + min(rank, remainder)) 
-    end_idx = int(start_idx + chunk_size + (1 if rank < remainder else 0)) 
-    DEBUG(f'start idx: {start_idx}; end idx: {end_idx}')
+    start_idx = int(integration_time / abs(ftle_dt) + rank * chunk_size + min(rank, remainder)) 
+    end_idx = int(start_idx + chunk_size + (1 if rank < remainder else 0))
+    DEBUG(f'Process {rank} start idx: {start_idx}; end idx: {end_idx}')
 
+    # if ftle_dt < 0:
+    #     # If calculating backward FTLE, need to start at least one integration time after beginning of data
+    #     start_idx = start_idx - integration_time / ftle_dt
+    #     end_idx = int(start_idx + chunk_size + (1 if rank < remainder else 0))
+    # if ftle_dt > 0:
+    #     # If calculating forward FTLE, need to end at least one integration time before end of data
+    #     start_idx = start_idx
+    #     end_idx = end_idx - integration_time / dt
 
     # Compute FTLE and save to .npy on each process for each timestep
-    ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
+    # ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
     # timesteps = range(end_idx - start_idx)
     timesteps = [0]  # TEST WITH SINGLE TIMESTEP
+    ftle_chunk = np.zeros([1, grid_dims[0], grid_dims[1]], dtype='d')  # TEST WITH SINGLE TIMESTEP
+
     for idx in timesteps:
         start_t = (start_idx + idx) * dt
         start = time.time()
         DEBUG(f'Began FTLE computation on process {rank} at {start}.')
-        ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, spatial_res, xmesh_uv, ymesh_uv)
+        ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, ftle_dt, spatial_res, xmesh_uv, ymesh_uv)
         DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
         ftle_chunk[idx, :, :] = ftle_field
 
     # dynamic file name in /rc_scratch based on rank/idxs
-    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.npy'
+    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank}_t{round(start_idx*dt, 2)}to{round(end_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.npy'
     np.save(data_fname, ftle_chunk)
     
     # Plot and save figure at final timestep of each process in /rc_scratch
-    ftle_fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=end_idx)
-    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank}_t{start_idx*dt}to{end_idx*dt}s_singlesource_cylarray_0to180s_ftle.png'
-    plt.savefig(plot_fname, ftle_fig, dpi=300)
+    ftle_fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=start_idx, odor_xmesh=xmesh_uv, odor_ymesh=ymesh_uv)
+    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank}_t{round(start_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.png'
+    ftle_fig.savefig(plot_fname, dpi=300)
 
     DEBUG(f"Process {rank} completed with result size {ftle_chunk.shape}")
 
