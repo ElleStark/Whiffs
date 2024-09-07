@@ -53,18 +53,25 @@ def get_vfield(filename, t0, y, dt, xmesh, ymesh):
 
     # Convert from time to frame
     frame = int(t0 / dt)
-    # u_data = load_data_chunk(filename, u_dataset_name, frame, frame+1)
-    # v_data = load_data_chunk(filename, v_dataset_name, frame, frame+1)
-    with h5py.File(filename, 'r') as f:
-        u_data = f.get(u_dataset_name)[frame, :, :].astype(np.float64)
-        u_data = u_data.T
-        v_data = f.get(v_dataset_name)[frame, :, :].astype(np.float64)
-        v_data = v_data.T
+    u_data = load_data_chunk(filename, u_dataset_name, frame, frame+1)
+    v_data = load_data_chunk(filename, v_dataset_name, frame, frame+1)
+    u_data = np.squeeze(u_data)
+    v_data = np.squeeze(v_data)
+    # with h5py.File(filename, 'r') as f:
+    #     u_data = f.get(u_dataset_name)[frame, :, :].astype(np.float64)
+    #     u_data = u_data.T
+    #     v_data = f.get(v_dataset_name)[frame, :, :].astype(np.float64)
+    #     v_data = v_data.T
 
     ymesh_vec = np.flipud(ymesh)[:, 0]
     xmesh_vec = xmesh[0, :]
     # ymesh_vec = np.flipud(load_data_chunk(filename, 'Model Metadata/yGrid', ndims=2))[:, 0]
     # xmesh_vec = load_data_chunk(filename, 'Model Metadata/xGrid', ndims=2)[0, :]
+
+    x_grid = xmesh
+    x_offset = xmesh_vec[-1] / 2
+    x_grid = x_grid - x_offset  # Center x coordinates on zero for velocity field extension
+    y_grid = ymesh
 
     # Set up interpolation functions
     # can use cubic interpolation for continuity between the segments (improve smoothness)
@@ -74,21 +81,82 @@ def get_vfield(filename, t0, y, dt, xmesh, ymesh):
     v_interp = RegularGridInterpolator((ymesh_vec, xmesh_vec), np.squeeze(np.flipud(v_data)),
                                         method='linear', bounds_error=False, fill_value=None)
     
-    u = u_interp((y[1], y[0]))
-    v = v_interp((y[1], y[0]))
+    # Shift grid such that x is centered on 0 as well as y
+    xmesh_vec = xmesh_vec - x_offset
+    
+    # Define length of transition zone and boundaries
+    Delta = 0.0005 * 4
+    x_max = np.max(x_grid)
+    y_max = np.max(y_grid)
+
+    # Spatial average of velocity field over grid for this time
+    avg_u = np.mean(u_data)
+    avg_v = np.mean(v_data)
+    
+    # Tensor for linear velocity field computation
+    v_l_tensor = np.empty((2, 2), dtype=np.float32)
+    v_l_tensor[0, 0] = np.mean(x_grid * u_data - y_grid * v_data) / np.mean(x_grid ** 2 + y_grid ** 2)
+    v_l_tensor[0, 1] = np.mean(y_grid * u_data) / np.mean(y_grid ** 2)
+    v_l_tensor[1, 0] = np.mean(x_grid * v_data) / np.mean(x_grid ** 2)
+    v_l_tensor[1, 1] = np.mean(y_grid * v_data - x_grid * u_data) / np.mean(x_grid ** 2 + y_grid ** 2)
+    
+    # Get x and y points
+    x_pts = y[0, :] - x_offset
+    y_pts = y[1, :]
+
+    # Calculate distance from center for x and y
+    x_abs = np.abs(x_pts)
+    y_abs = np.abs(y_pts)
+
+    # Outside the grid condition
+    outside_cond = (x_abs >= x_max) | (y_abs >= y_max)
+
+    # Inside grid condition
+    inside_cond = (x_abs <= (x_max - Delta)) & (y_abs <= (y_max - Delta))
+
+    # Transition zone condition
+    transition_cond = ~outside_cond & ~inside_cond
+
+    # Interpolate u and v for points inside the grid
+    u_inside = u_interp((y_pts, x_pts + x_offset))
+    v_inside = v_interp((y_pts, x_pts + x_offset))
+
+    # For points outside, use linear extension of velocity field
+    u_outside = v_l_tensor[0, 0] * x_pts + v_l_tensor[0, 1] * y_pts + avg_u
+    v_outside = v_l_tensor[1, 0] * x_pts + v_l_tensor[1, 1] * y_pts + avg_v
+
+    # Delta functions for transition zone
+    delta_x = np.where(x_abs <= (x_max - Delta), Delta ** 3,
+                    2 * x_abs ** 3 + 3 * (Delta - 2 * x_max) * x_abs ** 2 + 6 * x_max * (x_max - Delta) * x_abs + x_max ** 2 * (3 * Delta - 2 * x_max))
+    delta_y = np.where(y_abs <= (y_max - Delta), Delta ** 3,
+                    2 * y_abs ** 3 + 3 * (Delta - 2 * y_max) * y_abs ** 2 + 6 * y_max * (y_max - Delta) * y_abs + y_max ** 2 * (3 * Delta - 2 * y_max))
+
+    # Compute velocity for transition zone
+    v_l_u = v_l_tensor[0, 0] * x_pts + v_l_tensor[0, 1] * y_pts + avg_u
+    v_l_v = v_l_tensor[1, 0] * x_pts + v_l_tensor[1, 1] * y_pts + avg_v
+
+    u_orig = u_interp((y_pts, x_pts + x_offset))
+    v_orig = v_interp((y_pts, x_pts + x_offset))
+
+    u_transition = v_l_u + (u_orig - v_l_u) * delta_x * delta_y / Delta ** 6
+    v_transition = v_l_v + (v_orig - v_l_v) * delta_x * delta_y / Delta ** 6
+
+    # Combine results using np.where
+    u = np.where(outside_cond, u_outside, np.where(inside_cond, u_inside, u_transition))
+    v = np.where(outside_cond, v_outside, np.where(inside_cond, v_inside, v_transition))
+
     vfield = np.array([u, v])
 
-    plot_times = [0, 10, 20, 30, 40, 50, 60]
+    # plot_times = [0, 10, 20, 30, 40, 50, 60]
 
-    if t0 in plot_times:
-        # Plot u: horizontal component of velocity
-        plt.pcolormesh(u.reshape(2402, 3002))
-        plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/u_interp_t{t0}.png')
+    # if t0 in plot_times:
+    #     # Plot u: horizontal component of velocity
+    #     plt.pcolormesh(u.reshape(2402, 3002))
+    #     plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/u_interp_t{t0}.png')
 
-        # Plot v: vertical component of velocity
-        plt.pcolormesh(v.reshape(2402, 3002))
-        plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/v_interp_t{t0}.png')
-
+    #     # Plot v: vertical component of velocity
+    #     plt.pcolormesh(v.reshape(2402, 3002))
+    #     plt.savefig(f'/rc_scratch/elst4602/LCS_project/QC_plots/v_interp_t{t0}.png')
 
     return vfield
 
@@ -232,8 +300,8 @@ def main():
     # INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
     # Define common variables on all processes
-    # filename = '/rc_scratch/elst4602/LCS_project/Data_xfer/Re100_0_5mm_50Hz_singlesource_2d.h5'
-    filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    filename = '/rc_scratch/elst4602/LCS_project/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    # filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
     # Define dataset-based variables on process 0
@@ -322,7 +390,7 @@ def main():
     # Find start and end time index for each process
     start_idx = int(integration_time / abs(ftle_dt) + rank * chunk_size + min(rank, remainder)) 
     end_idx = int(start_idx + chunk_size + (1 if rank < remainder else 0))
-    DEBUG(f'Process {rank} start idx: {start_idx}; end idx: {end_idx}')
+    # DEBUG(f'Process {rank} start idx: {start_idx}; end idx: {end_idx}')
 
     # if ftle_dt < 0:
     #     # If calculating backward FTLE, need to start at least one integration time after beginning of data
@@ -335,25 +403,25 @@ def main():
 
     # Compute FTLE and save to .npy on each process for each timestep
     # ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
-    # timesteps = range(end_idx - start_idx)
-    timesteps = [0]  # TEST WITH SINGLE TIMESTEP
-    ftle_chunk = np.zeros([1, grid_dims[0], grid_dims[1]], dtype='d')  # TEST WITH SINGLE TIMESTEP
+    timesteps = range(end_idx - start_idx)
+    # timesteps = [0]  # TEST WITH SINGLE TIMESTEP
+    ftle_chunk = np.zeros([len(timesteps), grid_dims[0], grid_dims[1]], dtype='d')
 
+    start = time.time()
+    DEBUG(f'Began FTLE computation on process {rank} at {start}.')
     for idx in timesteps:
         start_t = (start_idx + idx) * dt
-        start = time.time()
-        DEBUG(f'Began FTLE computation on process {rank} at {start}.')
         ftle_field = compute_ftle(filename, xmesh_ftle, ymesh_ftle, start_t, integration_time, dt, ftle_dt, spatial_res, xmesh_uv, ymesh_uv)
-        DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
         ftle_chunk[idx, :, :] = ftle_field
+    DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
 
     # dynamic file name in /rc_scratch based on rank/idxs
-    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank}_t{round(start_idx*dt, 2)}to{round(end_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.npy'
+    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank : 03d}_t{round(start_idx*dt, 2)}to{round(end_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.npy'
     np.save(data_fname, ftle_chunk)
     
     # Plot and save figure at final timestep of each process in /rc_scratch
     ftle_fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=start_idx, odor_xmesh=xmesh_uv, odor_ymesh=ymesh_uv)
-    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank}_t{round(start_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.png'
+    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank : 03d}_t{round(start_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.png'
     ftle_fig.savefig(plot_fname, dpi=300)
 
     DEBUG(f"Process {rank} completed with result size {ftle_chunk.shape}")
