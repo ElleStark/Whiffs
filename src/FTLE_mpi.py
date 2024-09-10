@@ -14,6 +14,7 @@ import numpy.linalg as LA
 from math import log, sqrt
 from scipy.interpolate import RegularGridInterpolator
 import time
+# import os
 
 
 # Set up logging for convenient messages
@@ -300,12 +301,14 @@ def main():
     # INFO(f'RUNNING ON {num_procs} PROCESSES.')
 
     # Define common variables on all processes
-    filename = '/rc_scratch/elst4602/LCS_project/Re100_0_5mm_50Hz_singlesource_2d.h5'
-    # filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    filename = '/pl/active/odor2action/Stark_data/Re100_0_5mm_50Hz_singlesource_2d.h5'
+    # scratch_dir = os.environ['SLURM_SCRATCH']
+    # filename = f'{scratch_dir}/Re100_0_5mm_50Hz_singlesource_2d.h5'
     integration_time = 0.6  # seconds
 
     # Define dataset-based variables on process 0
     if rank==0:
+        DEBUG("starting Python script")
         start = time.time()
         spatial_res = load_data_chunk(filename, 'Model Metadata/spatialResolution', ndims=0)
         dt_freq = load_data_chunk(filename, 'Model Metadata/timeResolution', ndims=0)
@@ -402,9 +405,10 @@ def main():
     #     end_idx = end_idx - integration_time / dt
 
     # Compute FTLE and save to .npy on each process for each timestep
-    # ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
+    ftle_chunk = np.zeros([(end_idx - start_idx), grid_dims[0], grid_dims[1]], dtype='d')
     timesteps = range(end_idx - start_idx)
     # timesteps = [0]  # TEST WITH SINGLE TIMESTEP
+    # ftle_chunk = np.zeros([1, grid_dims[0], grid_dims[1]], dtype='d')
     ftle_chunk = np.zeros([len(timesteps), grid_dims[0], grid_dims[1]], dtype='d')
 
     start = time.time()
@@ -416,12 +420,12 @@ def main():
     DEBUG(f'Ended FTLE computation on process {rank} after {(time.time()-start)/60} min.')
 
     # dynamic file name in /rc_scratch based on rank/idxs
-    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank : 03d}_t{round(start_idx*dt, 2)}to{round(end_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.npy'
+    data_fname = f'/rc_scratch/elst4602/LCS_project/ftle_data/{rank : 04d}_t{round(start_idx*dt, 2)}to{round(end_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.npy'
     np.save(data_fname, ftle_chunk)
     
     # Plot and save figure at final timestep of each process in /rc_scratch
     ftle_fig = plot_ftle_snapshot(ftle_chunk, xmesh_ftle, ymesh_ftle, odor=True, fname=filename, frame=start_idx, odor_xmesh=xmesh_uv, odor_ymesh=ymesh_uv)
-    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank : 03d}_t{round(start_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.png'
+    plot_fname = f'/rc_scratch/elst4602/LCS_project/ftle_plots/{rank : 04d}_t{round(start_idx*dt, 2)}s_singlesource_cylarray_0to180s_ftle.png'
     ftle_fig.savefig(plot_fname, dpi=300)
 
     DEBUG(f"Process {rank} completed with result size {ftle_chunk.shape}")
