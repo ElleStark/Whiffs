@@ -93,7 +93,7 @@ def compute_max_strain(filename, dx, start_idx, end_idx):
 def plot_strain_snapshot(strain_field, xmesh, ymesh):
     fig, ax = plt.subplots()
 
-    strain_field = np.squeeze(strain_field[0, :, :])
+    strain_field = np.squeeze(strain_field[0, :, :]).T
 
     # Get desired FTLE snapshot data
     plt.pcolormesh(xmesh, ymesh, strain_field[:-1, :-1], cmap=plt.cm.viridis, vmin=0, vmax=18)
