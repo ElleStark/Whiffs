@@ -9,12 +9,12 @@ import pandas as pd
 
 def main():
 # Subset data by index as needed
-    xmin = 1400
-    xmax = 1450
-    ymin = 0
-    ymax = 1200
-    tmin = 0
-    tmax = 9000
+    xmin = 200
+    xmax = 300
+    ymin = 500
+    ymax = 700
+    tmin = 30
+    tmax = 1500
 
     xrange = slice(xmin, xmax)
     yrange = slice(ymin, ymax)
@@ -29,7 +29,7 @@ def main():
 
         # Odor and flow cue data
         odor_data = f.get(f'Odor Data/c')[time_lims, xrange, yrange]
-        u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange]
+        # u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange]
 
         # Spatial resolution & time array
         dt_freq = f.get('Model Metadata/timeResolution')[0].item()
@@ -37,21 +37,32 @@ def main():
         dx = f.get('Model Metadata/spatialResolution')[0].item()
         time_array = f.get('Model Metadata/timeArray')[time_lims]
 
+
+    file2 = 'D:/singlesource_2d_extended/FTLE_extendedsim_180s.h5'
+    # For FTLE, need to adjust time indices above by integration time 
+    with h5py.File(file2, 'r') as f:
+        flow_data = f.get('FTLE_back_0_6s_finegrid')[tmin:tmax-30, xmin*2:xmax*2, ymin*2:ymax*2]
+
     # Flip velocity data upside-down for correct computation of gradients
-    u_data = np.flip(u_data, axis=2)
-    dudt = np.gradient(u_data, dt, axis=0)
-    flow_data = dudt
+    # u_data = np.flip(u_data, axis=2)
+    # dudt = np.gradient(u_data, dt, axis=0)
+    # flow_data = dudt
 
     # Normalize flow data array on [0, 1] (min-max normalization)
-    flow_data = (flow_data - np.min(flow_data)) / (np.max(flow_data) - np.min(flow_data))
+    # flow_data = (flow_data - np.min(flow_data)) / (np.max(flow_data) - np.min(flow_data))
+    # Constrain FTLE to positive values
+    flow_data[np.where(flow_data<=0)] = 0
+    flow_data = flow_data / 8.25
+    # flow_data = (flow_data - (-4.5)) / (8.25 - (-4.25))  # global min/max is about -4.5 to 8.25
 
     # Define concentration level for start & end of whiff
     whiff_threshold = 0.01
 
     # CHOOSING X AND Y BASED ON CONTINUOUS INDICES
-    spacing = 1
-    x = list(range(0, len(odor_data[0, :, 0]), spacing))
-    y = list(range(0, len(odor_data[0, 0, :]), spacing))
+    x_spacing = 10
+    y_spacing = 1
+    x = list(range(0, len(odor_data[0, :, 0]), x_spacing))
+    y = list(range(0, len(odor_data[0, 0, :]), y_spacing))
     x, y = np.meshgrid(x, y)
     locs_list = list(zip(x.flatten(), y.flatten())) 
 
@@ -82,7 +93,7 @@ def main():
     for x, y in locs_list:
         # Obtain time series of data for flow and odor cues
         odor_ts = pd.Series(odor_data[:, x, y])
-        flow_ts = pd.Series(flow_data[:, x, y])
+        flow_ts = pd.Series(flow_data[:, x*2, y*2])
         # print(flow_ts.size)
 
         odor_df = pd.DataFrame({'C': odor_ts})
@@ -159,9 +170,9 @@ def main():
 
     # PLOTTING
     plt.close()
-    plt.scatter(stats_df['x'], stats_df['y'], c=stats_df['mean_E_ratio'])
+    plt.scatter(stats_df['x'], stats_df['y'], c=stats_df['mean_E_ratio'], vmin=0, vmax=2)
     plt.colorbar()
-    plt.savefig(f'ignore/plots/meanEratio_x{round(xmin*dx, 3)}to{round(xmax*dx, 3)}_y{round(ymin*dx-0.3, 3)}to{round(ymax*dx-0.3, 3)}_t{round(tmin*dt, 0)}to{round(tmax*dt, 0)}_wthr{whiff_threshold}.png', dpi=300)
+    plt.savefig(f'ignore/plots/FTLE_meanEratio_x{round(xmin*dx, 3)}to{round(xmax*dx, 3)}_y{round(ymin*dx-0.3, 3)}to{round(ymax*dx-0.3, 3)}_t{round(tmin*dt, 0)}to{round(tmax*dt, 0)}_wthr{whiff_threshold}.png', dpi=300)
     plt.show()
 
 if __name__=='__main__':
