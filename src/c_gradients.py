@@ -28,9 +28,10 @@ with h5py.File(file2, 'r') as f2:
 
 # Compute spatial concentration gradient as max of dC/dx or dC/dy
 grad_y, grad_x = np.gradient(odor)
-grad_y = abs(grad_y)
-grad_x = abs(grad_x)
-max_gradient = np.flipud(np.maximum(grad_y, grad_x))
+grad_y = np.flipud(abs(grad_y))
+grad_x = np.flipud(abs(grad_x))
+# max_gradient = np.maximum(grad_y, grad_x)
+tot_gradient = np.sqrt(grad_x**2 + grad_y**2)
 
 # Compute spatial FTLE gradient as max of d(FTLE)/dx or d(FTLE)/dy
 ftle_grad_y, ftle_grad_x = np.gradient(ftle)
@@ -46,15 +47,16 @@ FTLE_x, FTLE_y = np.meshgrid(FTLE_x, FTLE_y)
 # plot FTLE field
 fig, ax = plt.subplots()
 colormap = plt.cm.Greys
-vmin = 0.01
-vmax = 0.1
-plt.pcolormesh(FTLE_x[:, 1500:], FTLE_y[:, 1500:], ftle_max_gradient[:-1, 1500:-1], norm=colors.LogNorm(vmin=vmin, vmax=vmax), cmap=colormap, alpha=0.7, linewidths=0)
+vmin = 0
+vmax = 1
+# plt.pcolormesh(FTLE_x[:, 1500:], FTLE_y[:, 1500:], ftle[:-1, 1500:-1], norm=colors.LogNorm(vmin=vmin, vmax=vmax), cmap=colormap, alpha=0.7, linewidths=0)
+plt.pcolormesh(FTLE_x[:, 1500:], FTLE_y[:, 1500:], ftle[:-1, 1500:-1], vmin=vmin, vmax=vmax, cmap=colormap, alpha=0.7, linewidths=0)
 plt.colorbar()
 
 # Plot concentration gradient results
 vmin = 0.0001
 vmax = 0.01
-plt.pcolormesh(x_grid[:, 750:], y_grid[:, 750:], max_gradient[:, 750:], cmap=plt.cm.Reds, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
+plt.pcolormesh(x_grid[:, 750:], y_grid[:, 750:], tot_gradient[:, 750:], cmap=plt.cm.Reds, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
 plt.colorbar()
 
 # Plot max principal strain
