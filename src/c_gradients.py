@@ -6,22 +6,22 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
 
-filename = 'D:/singlesource_2d_extended/FTLE_extendedsim_180s.h5'
+filename = 'D:/singlesource_2d_extended/FTLE_extendedsim_T1_25_180s.h5'
 
-time = 800
+time = 2500
 xlims = slice(None, None)
 ylims = slice(None, None)
 
 
 with h5py.File(filename, 'r') as f:
-    ftle = f.get('FTLE_back_0_6s_finegrid')[time, xlims, ylims]
-    strain = f.get('maxPstrain')[time+30, xlims, ylims]
+    ftle = f.get('FTLE_back_1_25s_finegrid')[time, ylims, xlims]
+    # strain = f.get('maxPstrain')[time+30, xlims, ylims]
     # print(snapshot.shape)
 
 file2 = 'D:/singlesource_2d_extended/Re100_0_5mm_50Hz_singlesource_2d.h5'
 
 with h5py.File(file2, 'r') as f2:
-    odor = f2.get('Odor Data/c')[time+30, xlims, ylims].T
+    odor = f2.get('Odor Data/c')[time+62, xlims, ylims].T
     print(odor.shape)
     x_grid = f2.get('Model Metadata/xGrid')[xlims, ylims].T
     y_grid = f2.get('Model Metadata/yGrid')[xlims, ylims].T
@@ -34,10 +34,10 @@ grad_x = np.flipud(abs(grad_x))
 tot_gradient = np.sqrt(grad_x**2 + grad_y**2)
 
 # Compute spatial FTLE gradient as max of d(FTLE)/dx or d(FTLE)/dy
-ftle_grad_y, ftle_grad_x = np.gradient(ftle)
-ftle_grad_x = abs(ftle_grad_x)
-ftle_grad_y = abs(ftle_grad_y)
-ftle_max_gradient = np.maximum(ftle_grad_x, ftle_grad_y)
+# ftle_grad_y, ftle_grad_x = np.gradient(ftle)
+# ftle_grad_x = abs(ftle_grad_x)
+# ftle_grad_y = abs(ftle_grad_y)
+# ftle_max_gradient = np.maximum(ftle_grad_x, ftle_grad_y)
 
 # Create half-size mesh grid for FTLE field plotting
 FTLE_x = np.linspace(x_grid[0, 0], x_grid[0, -1], len(ftle[0, :])-1)
@@ -60,10 +60,10 @@ plt.pcolormesh(x_grid[:, 750:], y_grid[:, 750:], tot_gradient[:, 750:], cmap=plt
 plt.colorbar()
 
 # Plot max principal strain
-vmin = 1
-vmax = 5
-plt.pcolormesh(x_grid[:, 750:], y_grid[:, 750:], strain[:, 750:], cmap=plt.cm.Blues, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
-plt.colorbar()
+# vmin = 1
+# vmax = 5
+# plt.pcolormesh(x_grid[:, 750:], y_grid[:, 750:], strain[:, 750:], cmap=plt.cm.Blues, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
+# plt.colorbar()
 
 ax.set_aspect('equal', adjustable='box')
 
