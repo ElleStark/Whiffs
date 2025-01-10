@@ -12,12 +12,12 @@ def main():
 # Subset data by index as needed
     integration_time = 62
 
-    xmin = 1400
-    xmax = 1401
+    xmin = 1200
+    xmax = 1201
     ymin = 600
     ymax = 601
-    tmin = integration_time + 38
-    tmax = tmin + 501
+    tmin = integration_time + 2125
+    tmax = tmin + 301
 
     xrange = slice(xmin, xmax)
     yrange = slice(ymin, ymax)
@@ -67,22 +67,29 @@ def main():
     hline = np.log10(hline)
     # log_gradient = np.nan_to_num(log_gradient, nan=0)
 
+    # FOR VISUALIZATION ONLY: scale both to [-0.5, 0]
+    flow_data_log = - (flow_data_log - np.min(flow_data_log)) * (0.5) / (np.max(flow_data_log) - np.min(flow_data_log)) + 0.10
+    log_gradient = - (log_gradient - np.min(log_gradient)) * 0.5 / (np.max(log_gradient) - np.min(log_gradient)) + 0.10
+    hline = hline - 0.08
+
     # QC: PLOT line plots of odor gradient & FTLE
-    # fig, ax = plt.subplots()
-    # plt.plot(time_array, log_gradient, label='C time gradient', color='#1984c5')
-    # plt.plot(time_array, flow_gradient_log, label='FTLE time gradient, T=1.25s', color='#de6e56')
-    # # plt.plot(time_array, flow_data_log, label='log FTLE, T=1.25s')
-    # plt.hlines(hline, tmin*dt, tmax*dt, color='#1984c5', linestyle='dashed')
-    # # plt.yscale("log")
-    # plt.ylim((-0.55), (0))
-    # ax.axes.fill_between(np.squeeze(time_array), log_gradient, hline, where=(log_gradient > hline), color='#1984c5', alpha=0.4)
-    # plt.title('Time series of log normalized FTLE gradient and log normalized C gradient, x=0.7m y=0m, t=[2, 12]s')
+    fig, ax = plt.subplots()
+    plt.plot(time_array, log_gradient, label='C time gradient', color='#B85B51')
+    plt.plot(time_array, flow_data_log, label='FTLE, T=1.25s', color='#588D9D')
+    # plt.plot(time_array, flow_data_log, label='log FTLE, T=1.25s')
+    plt.hlines(hline, tmin*dt, tmax*dt, color='#07090F', linestyle='dashed')
+    # plt.yscale("log")
+    plt.ylim((-0.5), (0.15))
+    ax.axes.fill_between(np.squeeze(time_array), log_gradient, hline, where=(log_gradient > hline), color='#B85B51', alpha=0.4)
+    plt.title('Time series of log normalized FTLE and log normalized C gradient, x=0.7m y=0m, t=[2, 12]s')
     # plt.legend()
-    # plt.show()
+    plt.show()
 
     # Compute Pearson correlation for time series of log normalized signal gradients
 
     # First version: lag of 0
+    # Test: first 10s at this location, not whiff-based, 1s windows:
+
     
 
 
