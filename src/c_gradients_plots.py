@@ -8,18 +8,20 @@ import matplotlib.colors as colors
 import numpy as np
 
 time = 287
-xlims = slice(None, None)
-ylims = slice(None, None)
+xlims = slice(0, 200)
+ylims = slice(450, 750)
+xlims_ftle = slice(0, 400)
+ylims_ftle = slice(900, 1500)
 
 filename = 'D:/singlesource_2d_extended/FTLE_extendedsim_T1_25_180s.h5'
 with h5py.File(filename, 'r') as f:
-    ftle = f.get('FTLE_back_1_25s_finegrid')[time, ylims, xlims]
+    ftle = f.get('FTLE_back_1_25s_finegrid')[time, ylims_ftle, xlims_ftle]
     # strain = f.get('maxPstrain')[time+30, xlims, ylims]
     print(ftle.shape)
 
 file2 = 'D:/singlesource_2d_extended/Re100_0_5mm_50Hz_singlesource_2d.h5'
 with h5py.File(file2, 'r') as f2:
-    odor_gradient = f2.get('Odor Data/c_grad_spatial')[xlims, ylims, time+62]
+    odor_gradient = f2.get('Odor Data/c_grad_spatial')[ylims, xlims, time+62]
     # x and y grids for plotting
     x_grid = f2.get(f'Model Metadata/xGrid')[xlims, ylims]
     y_grid = f2.get(f'Model Metadata/yGrid')[xlims, ylims]
@@ -108,6 +110,6 @@ plt.xlabel('x [meters]')
 plt.ylabel('y [meters]')
 plt.title(f'FTLE vs odor gradient, t={round((time+62)*0.02, 1)}')
 
-plt.savefig('C:/Users/elles/Documents/CU_Boulder/Fluids_Research/Whiffs/ignore/plots/ftle_odorgrad_extended_t287.png', dpi=1000)
+# plt.savefig('C:/Users/elles/Documents/CU_Boulder/Fluids_Research/Whiffs/ignore/plots/ftle_odorgrad_extended_t287.png', dpi=1000)
 plt.show()
 
