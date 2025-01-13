@@ -1,6 +1,7 @@
 # Script to compute the relative timing of flow cue and odor GRADIENT ridges
 # Elle Stark January 2025
 
+import datafield
 import h5py
 import logging
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ def main():
         x_grid = f.get(f'Model Metadata/xGrid')[xrange, yrange]
         y_grid = f.get(f'Model Metadata/yGrid')[xrange, yrange]
 
-        # Odor and detectable flow cue data
+        # Odor and/or detectable flow cue data
         odor_gradient = f.get('Odor Data/c_grad_spatial')[yrange, xrange, time_lims].transpose(2, 0, 1)
         # odor_data = f.get(f'Odor Data/c')[time_lims, xrange, yrange]
         # u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange]
@@ -52,8 +53,18 @@ def main():
     file2 = 'D:/singlesource_2d_extended/FTLE_extendedsim_T1_25_180s.h5'
     # For FTLE, need to adjust time indices above by integration time 
     with h5py.File(file2, 'r') as f2:
-        flow_data = f2.get('FTLE_back_1_25s_finegrid')[tmin-integration_T_idx:tmax-integration_T_idx, ymin*2:ymax*2, xmin*2:xmax*2]
+        ftle_data = f2.get('FTLE_back_1_25s_finegrid')[tmin-integration_T_idx:tmax-integration_T_idx, ymin*2:ymax*2, xmin*2:xmax*2]
         # strain = f.get('maxPstrain')[time, xlims, ylims]
+
+    # define flow cue 
+    FTLE_x = np.linspace(x_grid[0, 0], x_grid[0, -1], ftle_data.shape[0]-1)  # FTLE grid finer than odor grid
+    FTLE_y = np.linspace(y_grid[0, 0], y_grid[-1, 0], ftle_data.shape[1]-1)  # FTLE grid finer than odor grid
+    FTLE_x, FTLE_y = np.meshgrid(FTLE_x, FTLE_y)
+
+
+    ftle_cgrad = datafield.DataField(ftle_data, FTLE_x, FTLE_y, dt)
+
+    # define odor cue
 
     # QC plot: time series of flow & odor data at select points
     DEBUG(f'odor gradient dims: {odor_gradient.shape}')
@@ -81,10 +92,6 @@ def main():
 
 
     # define odor cue
-
-
-
-
 
 
     # Find odor cue ridge indexes for each location
