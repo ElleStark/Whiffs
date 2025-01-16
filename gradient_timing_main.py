@@ -68,58 +68,41 @@ def main():
     # ftle_cgrad.plot_time_series(time_vec, 1, 1, xmin, ymin)
 
     # Find odor cue ridge indexes for each location
-    compute_pts = [(1, 1)]  # list of tuples for each point to be analyzed
+    compute_pts = [(1, 1)]  # list of index tuples for each (x, y) point to be analyzed
     odor_threshold = 10E-5
     # required window size for each ridge
     w_dur = 1  # duration in sec
     w_idx_dur = w_dur/dt
+
+    # Loop through desired locations for computing relative timing distributions
     for pt in compute_pts:
-        odor_ridges = ftle_cgrad.find_odor_ridges(odor_threshold, pt[1], pt[0], distance=int(w_idx_dur/2))
+        DEBUG(f'point idxs: {pt}')
+        odor_ridges = ftle_cgrad.find_odor_ridges(odor_threshold, pt, distance=int(w_idx_dur/2))
 
         # QC plot: time series of flow & odor data at select points with ridges
         # ftle_cgrad.plot_time_series(time_vec, 1, 1, xmin, ymin, ridges=odor_ridges[0], save=True)
 
         # Find timing of local max flow cue peaks in each window
-        flow_peaks, corrs = ftle_cgrad.find_loc_max_fcue(pt[1], pt[0], odor_ridges[0], w_idx_dur, corr=True, yidx=pt[1], xidx=pt[0])
-        valid_fpeaks = flow_peaks[flow_peaks>-100]
-        valid_corrs = corrs[corrs>-100]
-        INFO(f'Number of gradient ridges with corresponding flow cue peaks: {len(valid_fpeaks)}')
-        INFO(f'average correlation: {np.mean(valid_corrs)}')
+        title_id = f'x{round((xmin+1)*dx, 2)} y{0.3-round((ymin+1)*dx)} t={round(np.min(time_vec), 1)} to {round(np.max(time_vec), 1)} s, window={w_dur} s'
+        file_id = f'x{round((xmin+1)*dx, 2)}_y{round((ymin+1)*dx)}]_t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s_wdur{w_dur}s'
+        flow_peaks, corrs = ftle_cgrad.find_loc_max_fcue(pt, odor_ridges[0], w_idx_dur, title_id, file_id, corr=True, yidx=pt[1], xidx=pt[0], hist=True, box=True, QC=False)
 
-        # Box plot of relative flow peak timing
-        # plt.boxplot(valid_fpeaks)
-        # plt.ylim=(-w_idx_dur/2, w_idx_dur/2)
-        # plt.show()
+        DEBUG(f'Number of gradient ridges with corresponding flow cue peaks: {len(ftle_cgrad.flow_peaks[str(pt)])}')
+        DEBUG(f'average correlation: {np.mean(ftle_cgrad.f_o_corrs[str(pt)])}')
 
-        # Histogram of relative flow peak timing
-        plt.hist(valid_fpeaks, bins=15)
-        plt.title(f'relative FTLE timing, x{round((xmin+1)*dx, 2)} y{0.3-round((ymin+1)*dx)} t=1.25 to 180 s, window={w_dur} s, n_peaks={len(valid_fpeaks)}')
-        plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_hist_x{round((xmin+1)*dx, 2)}_y{round((ymin+1)*dx)}]_\
-                t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s_wdur{w_dur}s.png', dpi=300)
-        plt.show()
+        
 
-        # Boxplot of correlation values w/ mean & std dev labeled
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.boxplot(valid_corrs)
-        plt.title(f'pearson correlations, avg {round(np.mean(valid_corrs), 2)}, std {round(np.std(valid_corrs), 2)}, x{round((xmin+1)*dx, 2)} y{round(0.3-(ymin+1)*dx, 2)} t=1.25 to 180 s, window={w_dur}s')
-        # ax.text(1.5, 2.5, f'mean: {np.mean(valid_corrs)}', fontsize=12)
-        # ax.text(1.5, 2.5, 'test', fontsize=12)
-        #ax.text(2, 2.5, f'std dev: {np.std(valid_corrs)}', fontsize=12)
-        plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_corrs_x{round((xmin+1)*dx, 2)}_y{round(0.3-(ymin+1)*dx, 2)}]_\
-                        t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s.png', dpi=300)
-        plt.show()
-    
-    
-    # Display distribution of timing for location, if desired
+
 
 
     # Summarize distribution with characteristic statistic(s)
 
     
-    # Compute for many locations
+    # Compute for multiple locations
 
 
     # Display heat map of results
+
 
 
 

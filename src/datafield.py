@@ -43,6 +43,9 @@ class DataField:
         self.fy = flow_ymesh
         self.fdt = flow_dt
         self.fdx = flow_dx
+
+        self.flow_peaks = {}
+        self.f_o_corrs = {}
         
 
     def plot_time_series(self, time_vec, o_xidx, o_yidx, o_xloc, o_yloc, save=False, ridges=None, ridges2=None):
@@ -91,7 +94,7 @@ class DataField:
                         t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s.png', dpi=300)
         plt.show()
 
-    def find_odor_ridges(self, o_thrs, yidx, xidx, timelims=slice(None, None), distance=None, width=None):
+    def find_odor_ridges(self, o_thrs, pt, timelims=slice(None, None), distance=None, width=None):
         """_summary_
 
         Args:
@@ -105,6 +108,9 @@ class DataField:
         Returns:
             _type_: _description_
         """
+        yidx = pt[1]
+        xidx = pt[0]
+
         # select time series of odor data for finding ridge indexes
         odor_ts = self.odata[timelims, yidx, xidx]
 
@@ -114,7 +120,11 @@ class DataField:
         # return list of indexes with odor ridge times
         return ridge_idxs
     
-    def find_loc_max_fcue(self, f_yidx, f_xidx, w_ctrs, w_dur_idx, timelims=slice(None, None), corr=False, yidx=None, xidx=None):
+    def find_loc_max_fcue(self, pt, w_ctrs, w_dur_idx, title_id, file_id, timelims=slice(None, None), corr=False, yidx=None, xidx=None, hist=False, box=False, QC=False):
+        
+        # Extract x, y index locations
+        f_yidx = pt[1]
+        f_xidx = pt[0]
 
         # select time series of flow cue data for finding max local peaks
         flow_ts = self.fdata[timelims, f_yidx, f_xidx]
@@ -139,10 +149,11 @@ class DataField:
             else:
                 INFO('Too many peaks found, check window duration')
             
-            # QC: line plot of flow time series for each window with peak overlaid
-            # plt.plot(f_ts)
-            # plt.vlines(peak, 0, 1)
-            # plt.show()
+            if QC:
+                # QC: line plot of flow time series for each window with peak overlaid
+                plt.plot(f_ts)
+                plt.vlines(peak, 0, 1)
+                plt.show()
 
             if (corr & len(peak)) == 1:
                 o_ts = odor_ts[ctr-int(w_dur_idx/2):ctr+int(w_dur_idx/2)]
@@ -150,13 +161,42 @@ class DataField:
                 w_corr = np.corrcoef(o_ts, f_ts)[0, 1]
                 corrs[i] = w_corr
 
+            if QC:
                 # QC: plot of odor and flow in window
-                # plt.plot(o_ts, label='odor gradient')
-                # plt.plot(f_ts, label='flow')
-                # plt.legend()
-                # plt.show()
+                plt.plot(o_ts, label='odor gradient')
+                plt.plot(f_ts, label='flow')
+                plt.legend()
+                plt.show()
 
             i+=1
 
+        self.flow_peaks[str(pt)] = flow_peaks[flow_peaks>-100]
+        self.f_o_corrs[str(pt)] = corrs[corrs>-100]
+        # prominences = signal.peak_prominences(flow_ts, flow_peaks, wlen=w_dur_idx)
+
+        if hist:
+            self.plot_peak_hist(pt, title_id, file_id)
+        
+        if box:
+            self.plot_corr_boxplot(pt, title_id, file_id)
+
         return flow_peaks, corrs
+
+    def plot_peak_hist(self, pt, title_id, file_id, bins=15):
+        # Histogram of relative flow peak timing
+        plt.hist(self.flow_peaks[str(pt)], bins=bins)
+        plt.title(f'relative FTLE timing, {title_id}')
+        plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_hist_{file_id}.png', dpi=300)
+        plt.show()
+
+    def plot_corr_boxplot(self, pt, title_id, file_id):
+        # Boxplot of correlation values w/ mean & std dev labeled
+        mean_corr = np.mean(self.f_o_corrs[str(pt)])
+        std_corr = np.std(self.f_o_corrs[str(pt)])
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.boxplot(self.f_o_corrs[str(pt)])
+        plt.title(f'pearson correlations, avg {round(mean_corr, 2)}, std {round(std_corr, 2)}, {title_id}')
+        plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_corrs_{file_id}.png', dpi=300)
+        plt.show()
 
