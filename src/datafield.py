@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal as signal
+from scipy import stats
 
 logger = logging.getLogger('GradientTiming')
 logger.setLevel(logging.DEBUG)
@@ -44,9 +45,10 @@ class DataField:
         self.fdt = flow_dt
         self.fdx = flow_dx
 
-        self.flow_peaks = {}
-        self.f_o_corrs = {}
-        
+        # Initialize dicts for tracking relevant statistics at each location
+        self.flow_peaks = {}  # indices of max peak flow cue within all windows at each location
+        self.f_o_corrs = {}  # distribution of correlation values at each location
+        self.timing_centers = {}  # central tendency (mean or mode) of timing distribution at each location
 
     def plot_time_series(self, time_vec, o_xidx, o_yidx, o_xloc, o_yloc, save=False, ridges=None, ridges2=None):
         """_summary_
@@ -94,6 +96,7 @@ class DataField:
                         t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s.png', dpi=300)
         plt.show()
 
+
     def find_odor_ridges(self, o_thrs, pt, timelims=slice(None, None), distance=None, width=None):
         """_summary_
 
@@ -120,6 +123,7 @@ class DataField:
         # return list of indexes with odor ridge times
         return ridge_idxs
     
+
     def find_loc_max_fcue(self, pt, w_ctrs, w_dur_idx, title_id, file_id, timelims=slice(None, None), corr=False, yidx=None, xidx=None, hist=False, box=False, QC=False):
         
         # Extract x, y index locations
@@ -140,7 +144,7 @@ class DataField:
 
         i=0
         for ctr in w_ctrs:
-            f_ts = flow_ts[ctr-int(w_dur_idx/2):ctr+int(w_dur_idx/2)]
+            f_ts = flow_ts[ctr-int(w_dur_idx/2):ctr+int(w_dur_idx/2)+1]
             peak = signal.find_peaks(f_ts, distance=w_dur_idx)[0]
             if len(peak) == 0:
                 flow_peaks[i] = -999
@@ -156,7 +160,7 @@ class DataField:
                 plt.show()
 
             if (corr & len(peak)) == 1:
-                o_ts = odor_ts[ctr-int(w_dur_idx/2):ctr+int(w_dur_idx/2)]
+                o_ts = odor_ts[ctr-int(w_dur_idx/2):ctr+int(w_dur_idx/2)+1]
                 o_ts = (o_ts-min(o_ts)) / (max(o_ts)-min(o_ts))
                 w_corr = np.corrcoef(o_ts, f_ts)[0, 1]
                 corrs[i] = w_corr
@@ -170,8 +174,8 @@ class DataField:
 
             i+=1
 
-        self.flow_peaks[str(pt)] = flow_peaks[flow_peaks>-100]
-        self.f_o_corrs[str(pt)] = corrs[corrs>-100]
+        self.flow_peaks[pt] = flow_peaks[flow_peaks>-100]
+        self.f_o_corrs[pt] = corrs[corrs>-100]
         # prominences = signal.peak_prominences(flow_ts, flow_peaks, wlen=w_dur_idx)
 
         if hist:
@@ -180,23 +184,51 @@ class DataField:
         if box:
             self.plot_corr_boxplot(pt, title_id, file_id)
 
-        return flow_peaks, corrs
 
-    def plot_peak_hist(self, pt, title_id, file_id, bins=15):
+    def plot_peak_hist(self, pt, title_id, file_id, bins=20):
         # Histogram of relative flow peak timing
-        plt.hist(self.flow_peaks[str(pt)], bins=bins)
+        plt.hist(self.flow_peaks[pt], bins=bins)
         plt.title(f'relative FTLE timing, {title_id}')
         plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_hist_{file_id}.png', dpi=300)
         plt.show()
 
+
     def plot_corr_boxplot(self, pt, title_id, file_id):
         # Boxplot of correlation values w/ mean & std dev labeled
-        mean_corr = np.mean(self.f_o_corrs[str(pt)])
-        std_corr = np.std(self.f_o_corrs[str(pt)])
+        mean_corr = np.mean(self.f_o_corrs[pt])
+        std_corr = np.std(self.f_o_corrs[pt])
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.boxplot(self.f_o_corrs[str(pt)])
+        ax.boxplot(self.f_o_corrs[pt])
         plt.title(f'pearson correlations, avg {round(mean_corr, 2)}, std {round(std_corr, 2)}, {title_id}')
         plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_corrs_{file_id}.png', dpi=300)
         plt.show()
 
+
+    def compute_timing_centers(self, type='mean'):
+
+        for pt, peak_times in self.flow_peaks.items():
+            # each 'peak_times' is a list of timing of flow cue peaks for a given (x, y) location, 'pt'
+            if type=='mean':
+                self.timing_centers[pt] = round(np.mean(peak_times)*self.fdt, 2)
+            elif type=='mode':
+                self.timing_centers[pt] = round(stats.mode(peak_times)[0]*self.fdt, 2)
+            else:
+                raise SystemExit('Invalid central tendency type. Options are \'mean\' or \'mode\'.')
+            
+            DEBUG(f'point {pt} {type} of flow cue peak timing: {self.timing_centers[pt]}')
+
+    def plot_timing_ctrs_heatmap(self):
+
+        # initialize figure
+        fig, ax = plt.subplots(figsize=(4, 6))
+
+        x_vals = [x for x, y in self.timing_centers.keys()]
+        y_vals = [y for x, y in self.timing_centers.keys()]
+
+        t_ctrs = [ctr for ctr in self.timing_centers.values()]
+
+        plt.scatter(x_vals, y_vals, c=t_ctrs)
+        plt.colorbar()
+
+        plt.show()

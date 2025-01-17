@@ -2,6 +2,7 @@
 # Elle Stark January 2025
 
 from src import datafield 
+from matplotlib import colors
 import h5py
 import logging
 import matplotlib.pyplot as plt
@@ -20,10 +21,10 @@ def main():
     # load data, subset data by index as needed
     integration_T_idx = 62
     
-    xmin = 1449
-    xmax = 1451
-    ymin = 99
-    ymax = 101
+    xmin = 850
+    xmax = 861
+    ymin = 400
+    ymax = 801
     tmin = integration_T_idx 
     tmax = 9000
 
@@ -67,17 +68,41 @@ def main():
     # QC plot: time series of flow & odor data at select points
     # ftle_cgrad.plot_time_series(time_vec, 1, 1, xmin, ymin)
 
+    # QC plot: spatial snapshot of flow & odor data at a few times
+    time = 500
+    fig, ax = plt.subplots()
+    # FTLE params
+    colormap_f = plt.cm.Greys
+    vmin_f = 0
+    vmax_f = 8
+    plt.pcolormesh(FTLE_x, FTLE_y, ftle_data[time, :-2, :-2], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f)
+    # ftle_plot = ax.pcolormesh(FTLE_x, FTLE_y, snapshot[:-1, :-1], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f, alpha=0.7)
+    # plt.pcolormesh(x_grid, y_grid, snapshot[::2, ::2], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f, alpha=0.85)
+    # plt.colorbar()
+
+    # Odor overlay
+    odor_gradient[odor_gradient<0.0001] = 0.0001
+    colormap = plt.cm.Reds
+    vmin = 0.0001
+    vmax = 1
+    cmap = colors.ListedColormap(['white', 'red']) 
+    threshold = 0.025
+    plt.pcolormesh(x_grid, y_grid, np.flipud(odor_gradient[time, :-1, :-1]), cmap=colormap, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.4)
+    # plt.pcolormesh(x_grid, y_grid, np.flipud(odor[:-1, :-1]), cmap=cmap, norm=colors.BoundaryNorm([0, threshold, 1], cmap.N))
+    ax.set_aspect('equal', adjustable='box')
+    plt.show()
+
     # Find odor cue ridge indexes for each location
-    compute_pts = [(1, 1)]  # list of index tuples for each (x, y) point to be analyzed
+    compute_pts = [(0, 0), (1, 50), (2, 100), (3, 150), (4, 200), (5, 250), (6, 300), (7, 350), (8, 400)]  # list of index tuples for each (x, y) point to be analyzed
     odor_threshold = 10E-5
     # required window size for each ridge
     w_dur = 1  # duration in sec
-    w_idx_dur = w_dur/dt
+    w_idx_dur = np.ceil(w_dur/dt)
 
     # Loop through desired locations for computing relative timing distributions
     for pt in compute_pts:
         DEBUG(f'point idxs: {pt}')
-        odor_ridges = ftle_cgrad.find_odor_ridges(odor_threshold, pt, distance=int(w_idx_dur/2))
+        odor_ridges = ftle_cgrad.find_odor_ridges(odor_threshold, pt, distance=np.ceil(w_idx_dur/2))
 
         # QC plot: time series of flow & odor data at select points with ridges
         # ftle_cgrad.plot_time_series(time_vec, 1, 1, xmin, ymin, ridges=odor_ridges[0], save=True)
@@ -85,26 +110,16 @@ def main():
         # Find timing of local max flow cue peaks in each window
         title_id = f'x{round((xmin+1)*dx, 2)} y{0.3-round((ymin+1)*dx)} t={round(np.min(time_vec), 1)} to {round(np.max(time_vec), 1)} s, window={w_dur} s'
         file_id = f'x{round((xmin+1)*dx, 2)}_y{round((ymin+1)*dx)}]_t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s_wdur{w_dur}s'
-        flow_peaks, corrs = ftle_cgrad.find_loc_max_fcue(pt, odor_ridges[0], w_idx_dur, title_id, file_id, corr=True, yidx=pt[1], xidx=pt[0], hist=True, box=True, QC=False)
+        ftle_cgrad.find_loc_max_fcue(pt, odor_ridges[0], w_idx_dur, title_id, file_id, corr=True, yidx=pt[1], xidx=pt[0], hist=True, box=False, QC=False)
 
-        DEBUG(f'Number of gradient ridges with corresponding flow cue peaks: {len(ftle_cgrad.flow_peaks[str(pt)])}')
-        DEBUG(f'average correlation: {np.mean(ftle_cgrad.f_o_corrs[str(pt)])}')
+        DEBUG(f'Number of gradient ridges with corresponding flow cue peaks: {len(ftle_cgrad.flow_peaks[pt])}')
+        DEBUG(f'average correlation: {np.mean(ftle_cgrad.f_o_corrs[pt])}')
 
-        
-
-
-
-
-    # Summarize distribution with characteristic statistic(s)
-
-    
-    # Compute for multiple locations
-
+    # Summarize distributions with characteristic statistic(s)
+    ftle_cgrad.compute_timing_centers('mode')
 
     # Display heat map of results
-
-
-
+    ftle_cgrad.plot_timing_ctrs_heatmap()
 
 if __name__=='__main__':
     main()
