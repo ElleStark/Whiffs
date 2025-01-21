@@ -23,8 +23,8 @@ file2 = 'D:/singlesource_2d_extended/Re100_0_5mm_50Hz_singlesource_2d.h5'
 with h5py.File(file2, 'r') as f2:
     odor_gradient = f2.get('Odor Data/c_grad_spatial')[ylims, xlims, time+62]
     # x and y grids for plotting
-    x_grid = f2.get(f'Model Metadata/xGrid')[xlims, ylims]
-    y_grid = f2.get(f'Model Metadata/yGrid')[xlims, ylims]
+    x_grid = f2.get(f'Model Metadata/xGrid')[xlims, ylims].T
+    y_grid = f2.get(f'Model Metadata/yGrid')[xlims, ylims].T
 
 ### SECTION FOR GENERATING ODOR GRADIENT DATASET ####
 # initialize new dataset with dimensions
@@ -61,8 +61,8 @@ with h5py.File(file2, 'r') as f2:
 # ftle_max_gradient = np.maximum(ftle_grad_x, ftle_grad_y)
 
 # Create half-size mesh grid for FTLE field plotting
-FTLE_x = np.linspace(x_grid[0, 0], x_grid[-1, 0], len(ftle[0, :])-1)
-FTLE_y = np.linspace(y_grid[0, 0], y_grid[0, -1], len(ftle[:, 0])-1)
+FTLE_x = np.linspace(x_grid[0, 0], x_grid[0, -1], len(ftle[0, :])-1)
+FTLE_y = np.linspace(y_grid[0, 0], y_grid[-1, 0], len(ftle[:, 0])-1)
 FTLE_x, FTLE_y = np.meshgrid(FTLE_x, FTLE_y)
 
 
@@ -84,7 +84,7 @@ vmax = 0.5
 colormap = plt.cm.Reds
 colormap.set_under('white')
 # plt.pcolormesh(x_grid[:, :], y_grid[:, :], odor[:, :], cmap=plt.cm.Reds, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
-plt.pcolormesh(x_grid[:, :], y_grid[:, :], odor_gradient[:-1, :-1].T, cmap=colormap, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
+plt.pcolormesh(x_grid[:, :], y_grid[:, :], odor_gradient[:-1, :-1], cmap=colormap, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.5)
 cbar2 = plt.colorbar()
 cbar2.set_label('Concentration gradient (mg/m3 per m)')
 

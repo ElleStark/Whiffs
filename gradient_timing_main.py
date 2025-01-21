@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 logger = logging.getLogger('GradientTiming')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s:%(name)s:%(levelname)s:%(message)s"))
 logger.addHandler(handler)
@@ -21,10 +21,10 @@ def main():
     # load data, subset data by index as needed
     integration_T_idx = 62
     
-    xmin = 850
-    xmax = 861
-    ymin = 400
-    ymax = 801
+    xmin = 500
+    xmax = 1000
+    ymin = 100
+    ymax = 1100
     tmin = integration_T_idx 
     tmax = 9000
 
@@ -36,11 +36,11 @@ def main():
     filename = 'D:/singlesource_2d_extended/Re100_0_5mm_50Hz_singlesource_2d.h5'
     with h5py.File(filename, 'r') as f:
         # x and y grids for plotting
-        x_grid = f.get(f'Model Metadata/xGrid')[xrange, yrange]
-        y_grid = f.get(f'Model Metadata/yGrid')[xrange, yrange]
+        x_grid = f.get(f'Model Metadata/xGrid')[xrange, yrange].T
+        y_grid = f.get(f'Model Metadata/yGrid')[xrange, yrange].T
 
         # Odor and/or detectable flow cue data
-        odor_gradient = f.get('Odor Data/c_grad_spatial')[yrange, xrange, time_lims].transpose(2, 0, 1)
+        odor_gradient = f.get('Odor Data/c_grad_spatial')[yrange, xrange, time_lims]
         # odor_data = f.get(f'Odor Data/c')[time_lims, xrange, yrange]
         # u_data = f.get(f'Flow Data/u')[time_lims, xrange, yrange]
 
@@ -57,8 +57,8 @@ def main():
         # strain = f.get('maxPstrain')[time, xlims, ylims]
 
     # define flow cue grid if needed for FTLE data
-    FTLE_x = np.linspace(x_grid[0, 0], x_grid[-1, 0], ftle_data.shape[1]-1)  # FTLE grid finer than odor grid
-    FTLE_y = np.linspace(y_grid[0, 0], y_grid[0, -1], ftle_data.shape[2]-1)  # FTLE grid finer than odor grid
+    FTLE_x = np.linspace(x_grid[0, 0], x_grid[0, -1], ftle_data.shape[2]-1)  # FTLE grid finer than odor grid
+    FTLE_y = np.linspace(y_grid[0, 0], y_grid[-1, 0], ftle_data.shape[1]-1)  # FTLE grid finer than odor grid
     FTLE_x, FTLE_y = np.meshgrid(FTLE_x, FTLE_y)
 
     # create instance of class DataField for computations
@@ -76,24 +76,21 @@ def main():
     vmin_f = 0
     vmax_f = 8
     plt.pcolormesh(FTLE_x, FTLE_y, ftle_data[time, :-2, :-2], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f)
-    # ftle_plot = ax.pcolormesh(FTLE_x, FTLE_y, snapshot[:-1, :-1], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f, alpha=0.7)
-    # plt.pcolormesh(x_grid, y_grid, snapshot[::2, ::2], vmin=vmin_f, vmax=vmax_f, cmap=colormap_f, alpha=0.85)
-    # plt.colorbar()
 
     # Odor overlay
     odor_gradient[odor_gradient<0.0001] = 0.0001
     colormap = plt.cm.Reds
     vmin = 0.0001
     vmax = 1
-    cmap = colors.ListedColormap(['white', 'red']) 
-    threshold = 0.025
-    plt.pcolormesh(x_grid, y_grid, np.flipud(odor_gradient[time, :-1, :-1]), cmap=colormap, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.4)
-    # plt.pcolormesh(x_grid, y_grid, np.flipud(odor[:-1, :-1]), cmap=cmap, norm=colors.BoundaryNorm([0, threshold, 1], cmap.N))
+    plt.pcolormesh(x_grid, y_grid, (odor_gradient[:-1, :-1, time]), cmap=colormap, norm=colors.LogNorm(vmin=vmin, vmax=vmax), alpha=0.4)
     ax.set_aspect('equal', adjustable='box')
     plt.show()
 
     # Find odor cue ridge indexes for each location
-    compute_pts = [(0, 0), (1, 50), (2, 100), (3, 150), (4, 200), (5, 250), (6, 300), (7, 350), (8, 400)]  # list of index tuples for each (x, y) point to be analyzed
+    x_locs = np.floor(np.linspace(0, xmax-xmin-1, 150))
+    y_locs = np.floor(np.linspace(0, ymax-ymin-1, 120))
+    compute_pts = list((int(xloc), int(yloc)) for yloc in y_locs for xloc in x_locs)
+    # compute_pts = [(0, 0), (10, 50), (20, 100), (30, 150), (40, 200), (50, 250), (60, 300), (70, 350), (80, 400)]  # list of index tuples for each (x, y) point to be analyzed
     odor_threshold = 10E-5
     # required window size for each ridge
     w_dur = 1  # duration in sec
@@ -108,18 +105,20 @@ def main():
         # ftle_cgrad.plot_time_series(time_vec, 1, 1, xmin, ymin, ridges=odor_ridges[0], save=True)
 
         # Find timing of local max flow cue peaks in each window
-        title_id = f'x{round((xmin+1)*dx, 2)} y{0.3-round((ymin+1)*dx)} t={round(np.min(time_vec), 1)} to {round(np.max(time_vec), 1)} s, window={w_dur} s'
-        file_id = f'x{round((xmin+1)*dx, 2)}_y{round((ymin+1)*dx)}]_t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s_wdur{w_dur}s'
-        ftle_cgrad.find_loc_max_fcue(pt, odor_ridges[0], w_idx_dur, title_id, file_id, corr=True, yidx=pt[1], xidx=pt[0], hist=True, box=False, QC=False)
+        title_id = f'x{round((xmin+1)*dx, 2)} to{round((xmax)*dx, 2)} y{round(0.3-(ymax)*dx, 2)} to {round(0.3-(ymin)*dx, 2)} t={round(np.min(time_vec), 1)} to {round(np.max(time_vec), 1)} s, window={w_dur} s'
+        file_id = f'x{round((xmin+1)*dx, 2)}to{round((xmax)*dx, 2)}_y{round(0.3-(ymax)*dx, 2)}to {round(0.3-(ymin)*dx, 2)}_t{round(np.min(time_vec), 1)}to{round(np.max(time_vec), 1)}s_wdur{w_dur}s'
+        ftle_cgrad.find_loc_max_fcue(pt, odor_ridges[0], w_idx_dur, title_id, file_id, corr=True, yidx=pt[1], xidx=pt[0], hist=False, box=False, QC=False)
 
         DEBUG(f'Number of gradient ridges with corresponding flow cue peaks: {len(ftle_cgrad.flow_peaks[pt])}')
         DEBUG(f'average correlation: {np.mean(ftle_cgrad.f_o_corrs[pt])}')
 
     # Summarize distributions with characteristic statistic(s)
-    ftle_cgrad.compute_timing_centers('mode')
+    ftle_cgrad.compute_timing_centers('mean')
+    ftle_cgrad.compute_correlation_stats()
 
-    # Display heat map of results
-    ftle_cgrad.plot_timing_ctrs_heatmap()
+    # Display heat maps of results
+    ftle_cgrad.plot_timing_ctrs_heatmap(w_idx_dur, title_id=title_id)
+    ftle_cgrad.plot_correlation_heatmap(title_id)
 
 if __name__=='__main__':
     main()
