@@ -7,6 +7,8 @@ import h5py
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle
+
 
 logger = logging.getLogger('GradientTiming')
 logger.setLevel(logging.INFO)
@@ -18,13 +20,15 @@ WARN = logger.warning
 DEBUG = logger.debug
 
 def main():
+    save_files= True  # Save data?
+    
     # load data, subset data by index as needed
     integration_T_idx = 62
     
-    xmin = 500
-    xmax = 1000
-    ymin = 100
-    ymax = 1100
+    xmin = 1200
+    xmax = 1501
+    ymin = 0
+    ymax = 1200
     tmin = integration_T_idx 
     tmax = 9000
 
@@ -87,8 +91,8 @@ def main():
     plt.show()
 
     # Find odor cue ridge indexes for each location
-    x_locs = np.floor(np.linspace(0, xmax-xmin-1, 150))
-    y_locs = np.floor(np.linspace(0, ymax-ymin-1, 120))
+    x_locs = np.floor(np.linspace(0, xmax-xmin-1, 100))
+    y_locs = np.floor(np.linspace(0, ymax-ymin-1, 400))
     compute_pts = list((int(xloc), int(yloc)) for yloc in y_locs for xloc in x_locs)
     # compute_pts = [(0, 0), (10, 50), (20, 100), (30, 150), (40, 200), (50, 250), (60, 300), (70, 350), (80, 400)]  # list of index tuples for each (x, y) point to be analyzed
     odor_threshold = 10E-5
@@ -97,6 +101,7 @@ def main():
     w_idx_dur = np.ceil(w_dur/dt)
 
     # Loop through desired locations for computing relative timing distributions
+    counter = 0
     for pt in compute_pts:
         DEBUG(f'point idxs: {pt}')
         odor_ridges = ftle_cgrad.find_odor_ridges(odor_threshold, pt, distance=np.ceil(w_idx_dur/2))
@@ -111,6 +116,21 @@ def main():
 
         DEBUG(f'Number of gradient ridges with corresponding flow cue peaks: {len(ftle_cgrad.flow_peaks[pt])}')
         DEBUG(f'average correlation: {np.mean(ftle_cgrad.f_o_corrs[pt])}')
+
+        counter += 1
+
+        if (counter % 100) ==0:
+            INFO(f'{counter} pts computed. {round(counter/len(compute_pts)*100, 1)}% complete.')
+
+
+    if save_files:
+        # save flow peak and correlation data
+        with open(f'ignore/data/flow_peaks_{file_id}.pkl', 'wb') as f:
+            pickle.dump(ftle_cgrad.flow_peaks, f)
+            INFO('flow peak data saved.')
+        with open(f'corr_data_{file_id}.pkl', 'wb') as f:
+            pickle.dump(ftle_cgrad.f_o_corrs, f)
+            INFO('correlation data saved')
 
     # Summarize distributions with characteristic statistic(s)
     ftle_cgrad.compute_timing_centers('mean')

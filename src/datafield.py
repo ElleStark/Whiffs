@@ -7,11 +7,12 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import pickle
 import scipy.signal as signal
 from scipy import stats
 
 logger = logging.getLogger('GradientTiming')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s:%(name)s:%(levelname)s:%(message)s"))
 logger.addHandler(handler)
@@ -163,7 +164,7 @@ class DataField:
             elif len(peak) == 1:
                 flow_peaks[i] = peak - int(w_dur_idx/2)
             else:
-                INFO('Too many peaks found, check window duration')
+                WARN('Too many peaks found, check window duration')
             
             if QC:
                 # QC: line plot of flow time series for each window with peak overlaid
@@ -190,14 +191,11 @@ class DataField:
         self.f_o_corrs[pt] = corrs[corrs>-100]
         # prominences = signal.peak_prominences(flow_ts, flow_peaks, wlen=w_dur_idx)
 
-        if hist==True:
+        if hist:
             self.plot_peak_hist(pt, title_id, file_id)
         
-        if box==True:
+        if box:
             self.plot_corr_boxplot(pt, title_id, file_id)
-
-        else:
-            return
 
 
     def plot_peak_hist(self, pt, title_id, file_id, bins=20):
