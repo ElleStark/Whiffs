@@ -25,8 +25,8 @@ def main():
     # load data, subset data by index as needed
     integration_T_idx = 62
     
-    xmin = 600
-    xmax = 901
+    xmin = 300
+    xmax = 601
     ymin = 0
     ymax = 1201
     tmin = integration_T_idx 
@@ -134,12 +134,12 @@ def main():
         with open(f'ignore/data/FTLE_peaks_{file_id}.pkl', 'wb') as f:
             pickle.dump(flow_cgrad.flow_peaks, f)
             INFO('flow peak data saved.')
-        with open(f'FTLE_corr_data_{file_id}.pkl', 'wb') as f:
+        with open(f'ignore/data/FTLE_corr_data_{file_id}.pkl', 'wb') as f:
             pickle.dump(flow_cgrad.f_o_corrs, f)
             INFO('correlation data saved')
 
     # Summarize distributions with characteristic statistic(s)
-    flow_cgrad.compute_timing_centers('mean')
+    flow_cgrad.compute_timing_centers('mode')
     flow_cgrad.compute_correlation_stats()
 
     # Display heat maps of results
