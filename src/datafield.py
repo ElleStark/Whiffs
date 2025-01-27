@@ -201,7 +201,7 @@ class DataField:
     def plot_peak_hist(self, pt, title_id, file_id, bins=20):
         # Histogram of relative flow peak timing
         plt.hist(self.flow_peaks[pt], bins=bins)
-        plt.title(f'relative FTLE timing, {title_id}')
+        plt.title(f'relative flow cue timing, {title_id}')
         plt.savefig(f'ignore/plots/c_grad_ts/FTLEodorgrad_hist_{file_id}.png', dpi=300)
         plt.show()
 
@@ -223,9 +223,9 @@ class DataField:
         for pt, peak_times in self.flow_peaks.items():
             # each 'peak_times' is a list of timing of flow cue peaks for a given (x, y) location, 'pt'
             if type=='mean':
-                self.timing_centers[pt] = round(np.mean(peak_times)*self.fdt, 2)
+                self.timing_centers[pt] = round(np.mean(np.abs(peak_times))*self.fdt, 2)
             elif type=='mode':
-                self.timing_centers[pt] = round(stats.mode(peak_times)[0]*self.fdt, 2)
+                self.timing_centers[pt] = round(stats.mode(np.abs(peak_times))[0]*self.fdt, 2)
             else:
                 raise SystemExit('Invalid central tendency type. Options are \'mean\' or \'mode\'.')
             
@@ -249,7 +249,7 @@ class DataField:
 
         # if using absolute value, create sequential colormap 0 to half duration
         if absv:
-            t_ctrs = np.abs(t_ctrs)
+            # t_ctrs = np.abs(t_ctrs)
             cmap = cmr.lavender_r
             vmin = 0
             vmax = (vmin+half_dur)*self.odt
