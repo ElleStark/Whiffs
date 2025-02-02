@@ -25,8 +25,8 @@ def main():
     # load data, subset data by index as needed
     integration_T_idx = 62
     
-    xmin = 300
-    xmax = 601
+    xmin = 0
+    xmax = 301
     ymin = 0
     ymax = 1201
     tmin = integration_T_idx 
