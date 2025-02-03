@@ -21,8 +21,8 @@ start_idx = 0
 idx_per_src_idx = 3
 
 # Combine 5 pickled correlation files into single array
-peaks_f_list  = ['FTLE_peaks_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_peaks_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 
-                 'FTLE_peaks_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_peaks_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_peaks_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl']
+peaks_f_list  = ['noWin_peaks_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
+                 'noWin_peaks_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
 
 for pfile in peaks_f_list:
     with open(f'ignore/data/{pfile}', 'rb') as pf:
@@ -38,8 +38,8 @@ for pfile in peaks_f_list:
     start_idx += n_idxs - 1
 
 # Combine 5 pickled timing files into a single array
-corr_f_list = ['FTLE_corr_data_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_corr_data_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 
-                 'FTLE_corr_data_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_corr_data_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl', 'FTLE_corr_data_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s.pkl']
+corr_f_list = ['noWin_corr_data_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
+                 'noWin_corr_data_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
 
 start_idx = 0
 for cfile in corr_f_list:
@@ -63,9 +63,9 @@ if absv:
     # peaks_array = np.abs(peaks_array)
     cmap = cmr.lavender
     vmin = 0
-    # vmax = 50
+    vmax = 50
     # vmax = (vmin+half_dur)*dt
-    vmax = None
+    # vmax = None
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
 
 # if using positive and negative values, create diverging colormap with 0 at center
@@ -77,7 +77,7 @@ else:
 plt.pcolormesh(peaks_array.T, cmap=cmap, norm=norm)
 plt.colorbar()
 ax.set_aspect('equal', adjustable='box')
-plt.title(f'number of flow peaks & odor gradient ridges, {w_dur}s windows')
+plt.title(f'count of odor gradient ridges/FTLE peaks, {w_dur}s windows, threshold=10E-4')
 # plt.savefig()
 plt.show()
 
@@ -92,7 +92,7 @@ cmap = cmr.ember
 plt.pcolormesh(corrs_array.T, cmap=cmap, norm=norm)
 plt.colorbar()
 ax.set_aspect('equal', adjustable='box')
-plt.title(f'std dev correlation between odor gradient and FTLE signals, {w_dur}s windows')
+plt.title(f'std dev correlation between odor gradient and FTLE signals, {w_dur}s windows, threshold=10E-4')
 # plt.savefig()
 plt.show()
 
