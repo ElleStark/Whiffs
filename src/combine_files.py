@@ -21,8 +21,8 @@ start_idx = 0
 idx_per_src_idx = 3
 
 # Combine 5 pickled correlation files into single array
-peaks_f_list  = ['noWin_peaks_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
-                 'noWin_peaks_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
+peaks_f_list  = ['noWin_peaks_ftle_directOdor_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_directOdor_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
+                 'noWin_peaks_ftle_directOdor_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_directOdor_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_peaks_ftle_directOdor_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
 
 for pfile in peaks_f_list:
     with open(f'ignore/data/{pfile}', 'rb') as pf:
@@ -32,21 +32,21 @@ for pfile in peaks_f_list:
             if len(peaks_list) > 0:
             # mode_vals = round(stats.mode(abs(peaks_list))[1]/len(peaks_list), 2)
             # median_vals = round(np.median(abs(peaks_list))*dt, 2)
-                # p_ctr_4pct = np.sum((peaks_list>=-2) & (peaks_list<=2)) / len(peaks_list) * 100
-                count_peaks = len(peaks_list)
-                peaks_array[start_idx+int(pt[0]/idx_per_src_idx), int(pt[1]/idx_per_src_idx)] = count_peaks
+                p_ctr_4pct = np.sum((peaks_list>=-2) & (peaks_list<=2)) / len(peaks_list) * 100
+                # count_peaks = len(peaks_list)
+                peaks_array[start_idx+int(pt[0]/idx_per_src_idx), int(pt[1]/idx_per_src_idx)] = p_ctr_4pct
     start_idx += n_idxs - 1
 
 # Combine 5 pickled timing files into a single array
-corr_f_list = ['noWin_corr_data_ftle_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
-                 'noWin_corr_data_ftle_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
+corr_f_list = ['noWin_corr_data_ftle_directOdor_x0.0to0.15_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_directOdor_x0.15to0.3_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 
+                 'noWin_corr_data_ftle_directOdor_x0.3to0.45_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_directOdor_x0.45to0.6_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl', 'noWin_corr_data_ftle_directOdor_x0.6to0.75_y-0.3to 0.3_t1.2to180.0s_wdur1s_othrs0.001.pkl']
 
 start_idx = 0
 for cfile in corr_f_list:
     with open(f'ignore/data/{cfile}', 'rb') as cf:
         corrs_dict = pickle.load(cf)
         for pt, corrs_list in corrs_dict.items():
-            corrs_array[start_idx+int(pt[0]/3), int(pt[1]/3)] = np.std(corrs_list)
+            corrs_array[start_idx+int(pt[0]/3), int(pt[1]/3)] = np.mean(corrs_list)
     start_idx += n_idxs - 1
 
 
@@ -77,7 +77,7 @@ else:
 plt.pcolormesh(peaks_array.T, cmap=cmap, norm=norm)
 plt.colorbar()
 ax.set_aspect('equal', adjustable='box')
-plt.title(f'count of odor gradient ridges/FTLE peaks, {w_dur}s windows, threshold=10E-4')
+plt.title(f'percent of FTLE peaks within 0.04s of odor ridges, {w_dur}s windows, threshold=10E-4')
 # plt.savefig()
 plt.show()
 
@@ -92,7 +92,7 @@ cmap = cmr.ember
 plt.pcolormesh(corrs_array.T, cmap=cmap, norm=norm)
 plt.colorbar()
 ax.set_aspect('equal', adjustable='box')
-plt.title(f'std dev correlation between odor gradient and FTLE signals, {w_dur}s windows, threshold=10E-4')
+plt.title(f'mean correlation between odor and FTLE signals, {w_dur}s windows, threshold=10E-4')
 # plt.savefig()
 plt.show()
 
